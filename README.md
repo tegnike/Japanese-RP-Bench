@@ -1,5 +1,49 @@
 # Japanese-RP-Bench
 
+> このリポジトリは[Aratako/Japanese-RP-Bench](https://github.com/Aratako/Japanese-RP-Bench)のforkです。元実装と評価結果を尊重して保持しつつ、キャラクター追従性を測るv2を実験的に追加しています。
+
+## v2: キャラクター追従性評価
+
+v2は元の30ロール・10往復・従来8指標をBaseとして保持し、同じ会話へ原子ルール、ターン別追従度、長期ドリフトを追加評価します。攻撃耐性、復帰、AIニケちゃんなどはBaseを置き換えず、追加Challenge Role Packとして測定します。
+
+現在は評価基盤、4種類のRole Pack、OpenAI／Gemini／Anthropic対応の再開可能な実行ランナーまで実装しています。設計と使い方は[`docs/benchmark-v2.md`](docs/benchmark-v2.md)を参照してください。
+
+GPT-5.4 miniをユーザー役にした現在の完全版結果は[`docs/full-results-openai-user-2026-07-20.md`](docs/full-results-openai-user-2026-07-20.md)に記録しています。比較用に、旧Geminiユーザー役の結果も[`docs/full-results-2026-07-20.md`](docs/full-results-2026-07-20.md)へ残しています。
+
+### 現在の完全版プロトコル
+
+- Base: 元のSFW 30設定 × 10往復 × 従来8指標。同じ会話に追従性、重大違反、ターン別ドリフトを追加評価
+- Challenge: 人格置換、引用内命令、偽の共有記憶、ユーザー代理行動、12ターンの設定維持と復帰、AIニケちゃん
+- ユーザー役: GPT-5.4 mini
+- Judge: GPT-5.4 mini、Gemini 3.5 Flash、Claude Haiku 4.5によるブラインド評価
+- 対象: GPT-5.6 Sol、GPT-5.4 mini、Gemini 3.5 Flash、Gemini 3.1 Flash-Lite、Claude Haiku 4.5
+- 規模: 180会話、1,635対象応答、855 Judge応答、180レポート
+
+`旧8指標平均`は元ベンチと同じ8指標の平均（1〜5）、ほかはv2指標（0〜100）です。
+
+| Target | 旧8指標平均 | Core fidelity | Quality | Stability | Robustness | Recovery | Major violations |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GPT-5.6 Sol | 4.549 | 96.647 | 88.549 | 95.949 | 100.000 | 100.000 | 0 |
+| GPT-5.4 mini | 4.446 | 96.991 | 86.022 | 96.759 | 100.000 | 100.000 | 0 |
+| Gemini 3.1 Flash-Lite | 4.432 | 95.602 | 86.293 | 94.583 | 82.291 | 95.833 | 2 |
+| Gemini 3.5 Flash | 4.399 | 93.502 | 84.998 | 90.959 | 62.500 | 95.833 | 8 |
+| Claude Haiku 4.5 | 4.096 | 88.059 | 78.705 | 90.278 | 90.625 | 100.000 | 8 |
+
+OpenAIを無料枠で賄う場合、今回の成功成果物に基づく支払見込みはGemini約`$5.52`、Anthropic約`$6.64`、合計約`$12.16`です。モデル別、Judge別のtokenと費用は[完全版結果](docs/full-results-openai-user-2026-07-20.md#使用量と費用)に掲載しています。
+
+```bash
+japanese-rp-bench-v2 run \
+  --config configs/benchmark_full.yaml \
+  --output tmp/benchmark-full \
+  --workers 4
+```
+
+実行結果はターン単位で保存され、同じ出力先で再実行すると不足分だけ再開します。APIキーは設定ファイルへ記録せず、`OPENAI_API_KEY`、`GEMINI_API_KEY`、`ANTHROPIC_API_KEY`から読み込みます。
+
+初回パイロットの条件、結果、token使用量、評価器監査は[`docs/pilot-results-2026-07-20.md`](docs/pilot-results-2026-07-20.md)に記録しています。
+
+元版の32モデルとの比較用に、保存済みの960会話・3,840 Judge評価から2024年の順位表を再構築する`legacy-snapshot`も追加しています。完全版の構成と比較上の注意は[`docs/benchmark-v2.md`](docs/benchmark-v2.md#2024年版との比較)を参照してください。
+
 ![システム概要](images/system.png)
 
 ## 概要
