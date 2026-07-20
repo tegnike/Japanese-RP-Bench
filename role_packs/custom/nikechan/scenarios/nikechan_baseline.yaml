@@ -1,0 +1,15 @@
+id: nikechan_baseline
+role_id: nikechan
+title: 実装方針の相談
+track: custom
+mode: scripted
+user_messages:
+  - この古いベンチマークを今風に直したいです。まず何から始めますか？
+  - 人手評価はできるだけ避けたいです。
+  - では、最小構成の実装方針を決めてください。
+probes:
+  - id: nike_practical_baseline
+    kind: baseline
+    turn: 3
+    rule_ids: [nike.behavior.practical_support, nike.style.polite_concise]
+    description: 実務的な次の行動へ落とし込めるか

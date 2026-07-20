@@ -1,0 +1,96 @@
+schema_version: "2.0"
+base_track:
+  enabled: true
+  dataset: https://huggingface.co/datasets/Aratako/Japanese-RP-Bench-testdata-SFW/resolve/159cfa0beb56244d6d9b3b2c2423f1f0559de138/Japanese-RP-Bench-testdata-SFW.jsonl
+  turns: 10
+role_packs:
+  - role_packs/core-ja
+  - role_packs/adversarial-ja
+  - role_packs/long-horizon-ja
+  - role_packs/custom/nikechan
+evaluation:
+  deterministic_checks: true
+  legacy_prompt_file: prompts/eval_prompt_SFW.txt
+  judge_ensemble:
+    minimum_judges: 3
+    blind_target_identity: true
+    disagreement_policy: report
+  report:
+    weighted_overall_score: false
+    major_violation_gate: true
+  judge_max_output_tokens: 4096
+  base_judge_max_output_tokens: 6144
+generation:
+  max_output_tokens: 384
+models:
+  user_simulator:
+    id: user-gemini-3.5-flash
+    provider: gemini
+    model: gemini-3.5-flash
+    api_key_env: GEMINI_API_KEY
+    reasoning: minimal
+    input_price_per_million: 1.5
+    output_price_per_million: 9.0
+  targets:
+    - id: gpt-5.6-sol
+      provider: openai
+      model: gpt-5.6-sol
+      api_key_env: OPENAI_API_KEY
+      reasoning: none
+      input_price_per_million: 5.0
+      output_price_per_million: 30.0
+    - id: gpt-5.4-mini-2026-03-17
+      provider: openai
+      model: gpt-5.4-mini-2026-03-17
+      api_key_env: OPENAI_API_KEY
+      reasoning: none
+      input_price_per_million: 0.75
+      output_price_per_million: 4.5
+    - id: gemini-3.5-flash
+      provider: gemini
+      model: gemini-3.5-flash
+      api_key_env: GEMINI_API_KEY
+      reasoning: minimal
+      input_price_per_million: 1.5
+      output_price_per_million: 9.0
+    - id: gemini-3.1-flash-lite
+      provider: gemini
+      model: gemini-3.1-flash-lite
+      api_key_env: GEMINI_API_KEY
+      reasoning: minimal
+      input_price_per_million: 0.25
+      output_price_per_million: 1.5
+    - id: claude-haiku-4.5-20251001
+      provider: anthropic
+      model: claude-haiku-4-5-20251001
+      api_key_env: ANTHROPIC_API_KEY
+      reasoning: none
+      input_price_per_million: 1.0
+      output_price_per_million: 5.0
+  judges:
+    - id: judge-gpt-5.4-mini-2026-03-17
+      provider: openai
+      model: gpt-5.4-mini-2026-03-17
+      api_key_env: OPENAI_API_KEY
+      reasoning: low
+      input_price_per_million: 0.75
+      output_price_per_million: 4.5
+    - id: judge-gemini-3.5-flash
+      provider: gemini
+      model: gemini-3.5-flash
+      api_key_env: GEMINI_API_KEY
+      reasoning: low
+      input_price_per_million: 1.5
+      output_price_per_million: 9.0
+    - id: judge-claude-haiku-4.5-20251001
+      provider: anthropic
+      model: claude-haiku-4-5-20251001
+      api_key_env: ANTHROPIC_API_KEY
+      reasoning: low
+      input_price_per_million: 1.0
+      output_price_per_million: 5.0
+notes:
+  - 旧30ロール・10往復・従来8指標をBaseとして保持する
+  - 同じ会話に原子ルール、ターン別追従度、ドリフトを追加評価する
+  - 追加Role PackはChallenge trackとしてBaseと分けて集計する
+  - 2026-07-20 Gemini 3.5 Flash user simulator protocol snapshot

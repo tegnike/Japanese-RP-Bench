@@ -1,0 +1,13 @@
+id: core-ja
+name: Japanese Role Fidelity Core
+version: "0.1.0"
+description: 日本語キャラクター追従性を複数ジャンルで測る汎用コアRole Pack
+roles:
+  - roles/career_mentor.yaml
+  - roles/wind_guide.yaml
+scenarios:
+  - scenarios/career_mentor_baseline.yaml
+  - scenarios/wind_guide_baseline.yaml
+metadata:
+  locale: ja-JP
+  status: experimental

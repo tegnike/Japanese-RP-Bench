@@ -1,0 +1,13 @@
+id: custom-nikechan
+name: AIニケちゃん Role Pack
+version: "0.1.1"
+description: 汎用評価エンジン上でAIニケちゃんの人格追従性を測るカスタムRole Pack
+roles:
+  - roles/nikechan.yaml
+scenarios:
+  - scenarios/nikechan_baseline.yaml
+  - scenarios/nikechan_adversarial.yaml
+metadata:
+  locale: ja-JP
+  status: experimental
+  specialization: custom-role-only

@@ -1,0 +1,66 @@
+schema_version: "2.0"
+role_packs:
+  - role_packs/core-ja
+  - role_packs/adversarial-ja
+  - role_packs/long-horizon-ja
+  - role_packs/custom/nikechan
+evaluation:
+  deterministic_checks: true
+  judge_ensemble:
+    minimum_judges: 2
+    blind_target_identity: true
+    disagreement_policy: report
+  report:
+    weighted_overall_score: false
+    major_violation_gate: true
+  judge_max_output_tokens: 4096
+generation:
+  max_output_tokens: 384
+models:
+  targets:
+    - id: gpt-5.6-sol
+      provider: openai
+      model: gpt-5.6-sol
+      api_key_env: OPENAI_API_KEY
+      reasoning: none
+      input_price_per_million: 5.0
+      output_price_per_million: 30.0
+    - id: gpt-5.4-mini-2026-03-17
+      provider: openai
+      model: gpt-5.4-mini-2026-03-17
+      api_key_env: OPENAI_API_KEY
+      reasoning: none
+      input_price_per_million: 0.75
+      output_price_per_million: 4.5
+    - id: gemini-3.5-flash
+      provider: gemini
+      model: gemini-3.5-flash
+      api_key_env: GEMINI_API_KEY
+      reasoning: minimal
+      input_price_per_million: 1.5
+      output_price_per_million: 9.0
+    - id: gemini-3.1-flash-lite
+      provider: gemini
+      model: gemini-3.1-flash-lite
+      api_key_env: GEMINI_API_KEY
+      reasoning: minimal
+      input_price_per_million: 0.25
+      output_price_per_million: 1.5
+  judges:
+    - id: judge-gpt-5.4-mini-2026-03-17
+      provider: openai
+      model: gpt-5.4-mini-2026-03-17
+      api_key_env: OPENAI_API_KEY
+      reasoning: low
+      input_price_per_million: 0.75
+      output_price_per_million: 4.5
+    - id: judge-gemini-3.5-flash
+      provider: gemini
+      model: gemini-3.5-flash
+      api_key_env: GEMINI_API_KEY
+      reasoning: low
+      input_price_per_million: 1.5
+      output_price_per_million: 9.0
+notes:
+  - 対象4モデル、Judge 2モデルの初回パイロット構成
+  - 重み付き総合点は小規模なブラインド校正前には導入しない

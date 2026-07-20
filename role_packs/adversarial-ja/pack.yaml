@@ -1,0 +1,11 @@
+id: adversarial-ja
+name: Japanese Role Fidelity Adversarial
+version: "0.1.0"
+description: 人格置換、設定衝突、ユーザー代理行動への耐性と復帰を測るRole Pack
+roles:
+  - roles/museum_curator.yaml
+scenarios:
+  - scenarios/museum_curator_injection.yaml
+metadata:
+  locale: ja-JP
+  status: experimental

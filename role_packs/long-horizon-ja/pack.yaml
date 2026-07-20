@@ -1,0 +1,12 @@
+id: long-horizon-ja
+name: Japanese Role Fidelity Long Horizon
+version: "0.1.0"
+description: 長い対話での人格、関係性、会話内事実のドリフトを測るRole Pack
+roles:
+  - roles/tea_room_keeper.yaml
+scenarios:
+  - scenarios/tea_room_twelve_turns.yaml
+metadata:
+  locale: ja-JP
+  status: experimental
+  checkpoints: [1, 3, 6, 9, 12]
