@@ -16,12 +16,12 @@ from japanese_rp_bench.v2.base import (
 from japanese_rp_bench.v2.judge import QUALITY_DIMENSIONS, build_judge_request, parse_judge_response
 from japanese_rp_bench.v2.legacy import build_legacy_snapshot
 from japanese_rp_bench.v2.rolepacks import load_role_pack
-from japanese_rp_bench.v2.providers import ModelSpec, generate_text
-from japanese_rp_bench.v2.providers import GenerationResult
+from japanese_rp_bench.v2.providers import GenerationResult, ModelSpec, ProviderError, RateLimitError
+from japanese_rp_bench.v2.providers import generate_text
 from japanese_rp_bench.v2.rules import evaluate_deterministic_rules
 from japanese_rp_bench.v2.scoring import score_conversation
 from japanese_rp_bench.v2.schemas import Conversation, JudgeEvaluation, SchemaError, Verdict
-from japanese_rp_bench.v2.runner import _generate_conversation
+from japanese_rp_bench.v2.runner import _generate_base_judgments, _generate_conversation
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -200,6 +200,151 @@ class ScoringTests(unittest.TestCase):
 
 
 class ProviderTests(unittest.TestCase):
+    def test_expensive_providers_do_not_retry_failed_requests(self) -> None:
+        for provider, model in (("gemini", "gemini-test"), ("anthropic", "claude-test")):
+            with self.subTest(provider=provider):
+                spec = ModelSpec(
+                    id=f"{provider}-test",
+                    provider=provider,
+                    model=model,
+                    api_key_env="TEST_EXPENSIVE_KEY",
+                    reasoning="minimal",
+                    input_price_per_million=1,
+                    output_price_per_million=1,
+                )
+                with patch.dict("os.environ", {"TEST_EXPENSIVE_KEY": "secret"}), patch(
+                    "japanese_rp_bench.v2.providers._post_json",
+                    side_effect=ProviderError("temporary failure"),
+                ) as post:
+                    with self.assertRaises(ProviderError):
+                        generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+                self.assertEqual(post.call_count, 1)
+
+    def test_opencode_go_null_content_is_rejected_instead_of_saved_as_none(self) -> None:
+        spec = ModelSpec(
+            id="go-null-test",
+            provider="opencode_go",
+            model="mimo-v2.5-pro",
+            api_key_env="TEST_OPENCODE_GO_KEY",
+            reasoning="none",
+            input_price_per_million=0.435,
+            output_price_per_million=0.87,
+            api_style="openai_chat",
+        )
+        response = {
+            "model": "mimo-v2.5-pro",
+            "choices": [{"finish_reason": "length", "message": {"content": None}}],
+        }
+        with patch.dict("os.environ", {"TEST_OPENCODE_GO_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json", return_value=response
+        ) as post:
+            with self.assertRaisesRegex(ProviderError, "did not contain output text"):
+                generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+        self.assertEqual(post.call_count, 3)
+
+    def test_rate_limit_is_not_retried_by_outer_provider_loop(self) -> None:
+        spec = ModelSpec(
+            id="go-rate-limit-test",
+            provider="opencode_go",
+            model="glm-5.2",
+            api_key_env="TEST_OPENCODE_GO_KEY",
+            reasoning="none",
+            input_price_per_million=1.4,
+            output_price_per_million=4.4,
+            api_style="openai_chat",
+        )
+        with patch.dict("os.environ", {"TEST_OPENCODE_GO_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json",
+            side_effect=RateLimitError("quota exhausted"),
+        ) as post:
+            with self.assertRaises(RateLimitError):
+                generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+        self.assertEqual(post.call_count, 1)
+
+    def test_opencode_go_requires_an_explicit_api_style(self) -> None:
+        data = {
+            "id": "go-test",
+            "provider": "opencode_go",
+            "model": "glm-5.2",
+            "api_key_env": "TEST_OPENCODE_GO_KEY",
+            "reasoning": "none",
+            "input_price_per_million": 1.4,
+            "output_price_per_million": 4.4,
+        }
+        with self.assertRaises(SchemaError):
+            ModelSpec.from_dict(data)
+
+    def test_opencode_go_chat_usage_and_request_are_normalized(self) -> None:
+        spec = ModelSpec(
+            id="go-glm-test",
+            provider="opencode_go",
+            model="glm-5.2",
+            api_key_env="TEST_OPENCODE_GO_KEY",
+            reasoning="none",
+            input_price_per_million=1.4,
+            output_price_per_million=4.4,
+            api_style="openai_chat",
+        )
+        response = {
+            "id": "chatcmpl-1",
+            "model": "glm-5.2",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "応答"},
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 12,
+                "completion_tokens": 7,
+                "prompt_tokens_details": {"cached_tokens": 3},
+                "completion_tokens_details": {"reasoning_tokens": 2},
+            },
+        }
+        with patch.dict("os.environ", {"TEST_OPENCODE_GO_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json", return_value=response
+        ) as post:
+            result = generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+        self.assertEqual(result.text, "応答")
+        self.assertEqual((result.input_tokens, result.output_tokens), (12, 7))
+        self.assertEqual((result.cached_input_tokens, result.reasoning_tokens), (3, 2))
+        self.assertEqual(
+            post.call_args.args[0],
+            "https://opencode.ai/zen/go/v1/chat/completions",
+        )
+        payload = post.call_args.args[1]
+        self.assertEqual(payload["messages"][0], {"role": "system", "content": "system"})
+
+    def test_opencode_go_anthropic_endpoint_is_selected(self) -> None:
+        spec = ModelSpec(
+            id="go-qwen-test",
+            provider="opencode_go",
+            model="qwen3.7-max",
+            api_key_env="TEST_OPENCODE_GO_KEY",
+            reasoning="none",
+            input_price_per_million=2.5,
+            output_price_per_million=7.5,
+            api_style="anthropic_messages",
+        )
+        response = {
+            "id": "message-1",
+            "model": "qwen3.7-max",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "応答"}],
+            "usage": {
+                "input_tokens": 13,
+                "output_tokens": 8,
+                "cache_read_input_tokens": 4,
+            },
+        }
+        with patch.dict("os.environ", {"TEST_OPENCODE_GO_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json", return_value=response
+        ) as post:
+            result = generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+        self.assertEqual(result.text, "応答")
+        self.assertEqual(result.provider, "opencode_go")
+        self.assertEqual(post.call_args.args[0], "https://opencode.ai/zen/go/v1/messages")
+
     def test_openai_usage_is_normalized(self) -> None:
         spec = ModelSpec(
             id="openai-test",
@@ -258,15 +403,24 @@ class ProviderTests(unittest.TestCase):
                 "thoughtsTokenCount": 6,
             },
         }
+        schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
         with patch.dict("os.environ", {"TEST_GEMINI_KEY": "secret"}), patch(
             "japanese_rp_bench.v2.providers._post_json", return_value=response
-        ):
-            result = generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+        ) as post:
+            result = generate_text(
+                spec,
+                "system",
+                [{"role": "user", "content": "hi"}],
+                32,
+                json_mode=True,
+                json_schema=schema,
+            )
         self.assertEqual(result.text, "応答")
         self.assertEqual((result.input_tokens, result.output_tokens), (10, 10))
         self.assertEqual(result.reasoning_tokens, 6)
+        self.assertEqual(post.call_args.args[1]["generationConfig"]["responseSchema"], schema)
 
-    def test_empty_gemini_response_is_retried(self) -> None:
+    def test_empty_gemini_response_is_not_retried(self) -> None:
         spec = ModelSpec(
             id="gemini-test",
             provider="gemini",
@@ -280,16 +434,12 @@ class ProviderTests(unittest.TestCase):
             "candidates": [{"finishReason": "STOP", "content": {"parts": []}}],
             "usageMetadata": {},
         }
-        complete = {
-            "candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "応答"}]}}],
-            "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1},
-        }
         with patch.dict("os.environ", {"TEST_GEMINI_KEY": "secret"}), patch(
-            "japanese_rp_bench.v2.providers._post_json", side_effect=[empty, complete]
-        ) as post, patch("japanese_rp_bench.v2.providers.time.sleep"):
-            result = generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
-        self.assertEqual(result.text, "応答")
-        self.assertEqual(post.call_count, 2)
+            "japanese_rp_bench.v2.providers._post_json", return_value=empty
+        ) as post:
+            with self.assertRaisesRegex(ProviderError, "did not contain output text"):
+                generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+        self.assertEqual(post.call_count, 1)
 
     def test_anthropic_thinking_is_ignored_and_usage_is_normalized(self) -> None:
         spec = ModelSpec(
@@ -315,6 +465,7 @@ class ProviderTests(unittest.TestCase):
                 "cache_read_input_tokens": 4,
             },
         }
+        schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
         with patch.dict("os.environ", {"TEST_ANTHROPIC_KEY": "secret"}), patch(
             "japanese_rp_bench.v2.providers._post_json", return_value=response
         ) as post:
@@ -324,9 +475,14 @@ class ProviderTests(unittest.TestCase):
                 [{"role": "user", "content": "hi"}],
                 2048,
                 json_mode=True,
+                json_schema=schema,
             )
         self.assertEqual(result.text, '{"answer":"応答"}')
         self.assertEqual((result.input_tokens, result.output_tokens), (13, 8))
+        self.assertEqual(
+            post.call_args.args[1]["output_config"],
+            {"format": {"type": "json_schema", "schema": schema}},
+        )
         self.assertEqual(result.cached_input_tokens, 4)
         payload = post.call_args.args[1]
         self.assertEqual(payload["thinking"], {"type": "enabled", "budget_tokens": 1024})
@@ -443,6 +599,34 @@ class BaseTrackTests(unittest.TestCase):
         self.assertEqual(report["summary"]["core_fidelity_score"], 100.0)
         self.assertEqual(report["summary"]["drift_points"], -25.0)
 
+    def test_base_judge_accepts_fixed_turn_keys_and_string_scores(self) -> None:
+        pack = build_base_role_pack(self.cases(), turns=2)
+        role = pack.roles["legacy_role_00"]
+        findings = [
+            {
+                "rule_id": rule.id,
+                "verdict": "pass",
+                "confidence": 0.9,
+                "evidence": "fixture",
+                "rationale": "fixture",
+            }
+            for rule in role.rules
+        ]
+        raw = json.dumps(
+            {
+                "evaluation_reason": "fixture",
+                "legacy_scores": {dimension: "4" for dimension in LEGACY_DIMENSIONS},
+                "rule_findings": findings,
+                "turn_fidelity": {
+                    "1": {"score": "5", "failed_rule_ids": []},
+                    "2": {"score": "4", "failed_rule_ids": []},
+                },
+            }
+        )
+        judgment = parse_base_judge_response(raw, "judge-claude", role, 2)
+        self.assertEqual([item["turn"] for item in judgment["turn_fidelity"]], [1, 2])
+        self.assertEqual(judgment["legacy_scores"]["Consistency"], 4)
+
     def test_simulated_base_conversation_generates_user_and_target_turns(self) -> None:
         pack = build_base_role_pack(self.cases(), turns=2)
         scenario = pack.scenarios["legacy_case_00"]
@@ -470,6 +654,91 @@ class BaseTrackTests(unittest.TestCase):
         self.assertEqual([turn.user for turn in conversation.turns], ["出発しても大丈夫？", "次の質問"])
         purposes = [call["purpose"] for call in conversation.metadata["generation_calls"]]
         self.assertEqual(purposes, ["target", "user_simulator", "target"])
+
+    def test_failed_target_resumes_with_checkpointed_user_message(self) -> None:
+        pack = build_base_role_pack(self.cases(), turns=2)
+        scenario = pack.scenarios["legacy_case_00"]
+        role = pack.roles[scenario.role_id]
+        target = ModelSpec("target", "openai", "target", "KEY", "none", 0, 0)
+        user = ModelSpec("user", "gemini", "user", "KEY", "minimal", 0, 0)
+        first_attempt = iter(
+            [
+                GenerationResult("最初の返答", "target", "target", "openai", "1", 1, 1),
+                GenerationResult("保存する質問", "user", "user", "gemini", "2", 1, 1),
+                ProviderError("target unavailable"),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "conversation.json"
+            with patch(
+                "japanese_rp_bench.v2.runner.generate_text",
+                side_effect=lambda *args, **kwargs: (
+                    (_ for _ in ()).throw(value)
+                    if isinstance((value := next(first_attempt)), Exception)
+                    else value
+                ),
+            ):
+                with self.assertRaises(ProviderError):
+                    _generate_conversation(path, role, scenario, target, user, 64)
+            pending = json.loads(
+                path.with_suffix(".pending-user.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(pending["user"], "保存する質問")
+
+            resumed_result = GenerationResult(
+                "二度目の返答", "target", "target", "openai", "3", 1, 1
+            )
+            with patch(
+                "japanese_rp_bench.v2.runner.generate_text",
+                return_value=resumed_result,
+            ) as generate:
+                conversation = _generate_conversation(path, role, scenario, target, user, 64)
+
+            self.assertEqual(generate.call_count, 1)
+            self.assertEqual(conversation.turns[1].user, "保存する質問")
+            purposes = [call["purpose"] for call in conversation.metadata["generation_calls"]]
+            self.assertEqual(purposes, ["target", "user_simulator", "target"])
+            self.assertFalse(path.with_suffix(".pending-user.json").exists())
+
+    def test_expensive_base_judge_invalid_output_is_called_once(self) -> None:
+        pack = build_base_role_pack(self.cases(), turns=2)
+        scenario = pack.scenarios["legacy_case_00"]
+        role = pack.roles[scenario.role_id]
+        conversation = Conversation.from_dict(
+            {
+                "role_id": role.id,
+                "scenario_id": scenario.id,
+                "target_model": "target",
+                "turns": [
+                    {"user": "出発しても大丈夫？", "assistant": "大丈夫です。"},
+                    {"user": "次は？", "assistant": "進みましょう。"},
+                ],
+            }
+        )
+        judge = ModelSpec("judge-gemini", "gemini", "gemini", "KEY", "minimal", 1, 1)
+        invalid = GenerationResult("{}", judge.id, judge.model, "gemini", "1", 1, 1)
+        with tempfile.TemporaryDirectory() as directory:
+            judgment_path = Path(directory) / "judgments.jsonl"
+            with patch(
+                "japanese_rp_bench.v2.runner.generate_text", return_value=invalid
+            ) as generate, self.assertRaisesRegex(SchemaError, "returned invalid output"):
+                _generate_base_judgments(
+                    judgment_path,
+                    role,
+                    scenario,
+                    conversation,
+                    [judge],
+                    "rubric",
+                    128,
+                )
+            self.assertEqual(generate.call_count, 1)
+            raw_attempts = [
+                json.loads(line)
+                for line in judgment_path.with_suffix(".raw-attempts.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(raw_attempts[0]["raw_response"], "{}")
 
 
 if __name__ == "__main__":

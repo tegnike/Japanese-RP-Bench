@@ -1,0 +1,116 @@
+schema_version: "2.0"
+base_track:
+  enabled: true
+  dataset: https://huggingface.co/datasets/Aratako/Japanese-RP-Bench-testdata-SFW/resolve/159cfa0beb56244d6d9b3b2c2423f1f0559de138/Japanese-RP-Bench-testdata-SFW.jsonl
+  turns: 10
+role_packs:
+  - role_packs/core-ja
+  - role_packs/adversarial-ja
+  - role_packs/long-horizon-ja
+  - role_packs/custom/nikechan
+evaluation:
+  deterministic_checks: true
+  legacy_prompt_file: prompts/eval_prompt_SFW.txt
+  judge_ensemble:
+    minimum_judges: 3
+    blind_target_identity: true
+    disagreement_policy: report
+  report:
+    weighted_overall_score: false
+    major_violation_gate: true
+  judge_max_output_tokens: 4096
+  # Claude structured output may use a longer internal JSON representation for
+  # ten-turn Base evaluations. This is only consumed for uncached judgments.
+  base_judge_max_output_tokens: 8192
+generation:
+  # Reasoning-oriented Go models can spend several hundred tokens before
+  # emitting visible text. 1024 avoids empty `length` completions while the
+  # role prompts still keep the visible reply concise.
+  max_output_tokens: 1024
+models:
+  user_simulator:
+    id: user-gpt-5.4-mini-2026-03-17
+    provider: openai
+    model: gpt-5.4-mini-2026-03-17
+    api_key_env: OPENAI_API_KEY
+    reasoning: none
+    input_price_per_million: 0.75
+    output_price_per_million: 4.5
+  targets:
+    - id: opencode-go-kimi-k3
+      provider: opencode_go
+      api_style: openai_chat
+      model: kimi-k3
+      api_key_env: OPENCODE_GO_API_KEY
+      reasoning: none
+      input_price_per_million: 3.0
+      output_price_per_million: 15.0
+    - id: opencode-go-glm-5.2
+      provider: opencode_go
+      api_style: openai_chat
+      model: glm-5.2
+      api_key_env: OPENCODE_GO_API_KEY
+      reasoning: none
+      input_price_per_million: 1.4
+      output_price_per_million: 4.4
+    - id: opencode-go-qwen3.7-max
+      provider: opencode_go
+      api_style: anthropic_messages
+      model: qwen3.7-max
+      api_key_env: OPENCODE_GO_API_KEY
+      reasoning: none
+      input_price_per_million: 2.5
+      output_price_per_million: 7.5
+    - id: opencode-go-deepseek-v4-pro
+      provider: opencode_go
+      api_style: openai_chat
+      model: deepseek-v4-pro
+      api_key_env: OPENCODE_GO_API_KEY
+      reasoning: none
+      input_price_per_million: 0.435
+      output_price_per_million: 0.87
+    - id: opencode-go-minimax-m3
+      provider: opencode_go
+      api_style: anthropic_messages
+      model: minimax-m3
+      api_key_env: OPENCODE_GO_API_KEY
+      reasoning: none
+      input_price_per_million: 0.3
+      output_price_per_million: 1.2
+    - id: opencode-go-mimo-v2.5-pro
+      provider: opencode_go
+      api_style: openai_chat
+      model: mimo-v2.5-pro
+      api_key_env: OPENCODE_GO_API_KEY
+      reasoning: none
+      input_price_per_million: 0.435
+      output_price_per_million: 0.87
+  judges:
+    - id: judge-gpt-5.4-mini-2026-03-17
+      provider: openai
+      model: gpt-5.4-mini-2026-03-17
+      api_key_env: OPENAI_API_KEY
+      reasoning: low
+      input_price_per_million: 0.75
+      output_price_per_million: 4.5
+    - id: judge-gemini-3.5-flash
+      provider: gemini
+      model: gemini-3.5-flash
+      api_key_env: GEMINI_API_KEY
+      reasoning: low
+      input_price_per_million: 1.5
+      output_price_per_million: 9.0
+    - id: judge-claude-haiku-4.5-20251001
+      provider: anthropic
+      model: claude-haiku-4-5-20251001
+      api_key_env: ANTHROPIC_API_KEY
+      reasoning: low
+      input_price_per_million: 1.0
+      output_price_per_million: 5.0
+notes:
+  - OpenCode Goは評価対象にだけ使用する
+  - JudgeはOpenAI、Google、Anthropicの3モデルを維持する
+  - GeminiとAnthropicのJudgeは同一要求を自動再試行しない
+  - 全対象会話を生成・保存してからJudge評価を開始する
+  - Baseユーザー役は比較可能性のためGPT-5.4 miniへ固定する
+  - 中国主要6系列の汎用上位モデルを比較する候補構成。実行前に対象を確定する

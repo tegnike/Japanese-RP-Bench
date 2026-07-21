@@ -10,6 +10,8 @@ v2は元の30ロール・10往復・従来8指標をBaseとして保持し、同
 
 GPT-5.4 miniをユーザー役にした現在の完全版結果は[`docs/full-results-openai-user-2026-07-20.md`](docs/full-results-openai-user-2026-07-20.md)に記録しています。比較用に、旧Geminiユーザー役の結果も[`docs/full-results-2026-07-20.md`](docs/full-results-2026-07-20.md)へ残しています。
 
+OpenCode Go経由で実行した中国主要6モデルの結果と既存OpenAI・Google・Anthropic対象との比較は、[`docs/opencode-go-results-2026-07-21.md`](docs/opencode-go-results-2026-07-21.md)に記録しています。
+
 ### 現在の完全版プロトコル
 
 - Base: 元のSFW 30設定 × 10往復 × 従来8指標。同じ会話に追従性、重大違反、ターン別ドリフトを追加評価

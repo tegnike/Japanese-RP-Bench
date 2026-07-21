@@ -279,6 +279,15 @@ def parse_base_judge_response(
         )
 
     turn_fidelity = payload.get("turn_fidelity")
+    if isinstance(turn_fidelity, Mapping):
+        keyed_turns = []
+        for turn, value in turn_fidelity.items():
+            if not isinstance(value, Mapping):
+                raise SchemaError("Base judge keyed turn fidelity must contain objects")
+            item = dict(value)
+            item["turn"] = turn
+            keyed_turns.append(item)
+        turn_fidelity = keyed_turns
     if not isinstance(turn_fidelity, list) or len(turn_fidelity) != turns:
         raise SchemaError("Base judge must score every turn exactly once")
     normalized_turns = []

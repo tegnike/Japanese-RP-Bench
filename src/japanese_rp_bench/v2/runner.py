@@ -15,17 +15,19 @@ import yaml
 
 from japanese_rp_bench.v2.base import (
     LEGACY_DATASET_URL,
+    LEGACY_DIMENSIONS,
     build_base_judge_request,
     build_base_role_pack,
     load_legacy_cases,
     parse_base_judge_response,
     score_base_conversation,
 )
-from japanese_rp_bench.v2.judge import build_judge_request, parse_judge_response
+from japanese_rp_bench.v2.judge import QUALITY_DIMENSIONS, build_judge_request, parse_judge_response
 from japanese_rp_bench.v2.providers import (
     GenerationResult,
     ModelSpec,
     ProviderError,
+    RateLimitError,
     estimated_list_cost,
     generate_text,
 )
@@ -52,6 +54,7 @@ SUMMARY_METRICS = (
     "robustness_score",
     "recovery_score",
 )
+EXPENSIVE_JUDGE_PROVIDERS = {"gemini", "anthropic"}
 
 
 def run_benchmark(config_path: str | Path, output_path: str | Path, workers: int = 4) -> Dict[str, Any]:
@@ -113,34 +116,113 @@ def run_benchmark(config_path: str | Path, output_path: str | Path, workers: int
         for pack in role_packs
         for scenario in pack.scenarios.values()
     ]
+    jobs.sort(
+        key=lambda job: (
+            output_root
+            / "reports"
+            / _safe_name(job[2].id)
+            / f"{_safe_name(job[0].id)}__{_safe_name(job[1].id)}.json"
+        ).is_file()
+    )
+
+    # Finish and checkpoint all target conversations before any paid judge work.
+    # This keeps an invalid judge response from blocking the remaining target
+    # generation and lets a resumed run reuse every completed conversation.
+    generation_executor = ThreadPoolExecutor(max_workers=workers)
+    generation_futures = {
+        generation_executor.submit(
+            _generate_scenario_conversation,
+            output_root,
+            pack,
+            scenario,
+            target,
+            user_spec,
+            int(config["generation"].get("max_output_tokens", 384)),
+        ): (target.id, pack.id, scenario.id)
+        for pack, scenario, target in jobs
+    }
+    try:
+        for future in as_completed(generation_futures):
+            future.result()
+    except Exception:
+        for pending in generation_futures:
+            pending.cancel()
+        generation_executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    else:
+        generation_executor.shutdown(wait=True)
+
     reports: List[Dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(
-                _run_scenario,
-                output_root,
-                pack,
-                scenario,
-                target,
-                user_spec,
-                judge_specs,
-                config,
-                legacy_rubric,
-            ): (target.id, pack.id, scenario.id)
-            for pack, scenario, target in jobs
-        }
-        for future in as_completed(futures):
-            target_id, pack_id, scenario_id = futures[future]
+    failures: List[Dict[str, str]] = []
+    executor = ThreadPoolExecutor(max_workers=workers)
+    futures = {
+        executor.submit(
+            _run_scenario,
+            output_root,
+            pack,
+            scenario,
+            target,
+            user_spec,
+            judge_specs,
+            config,
+            legacy_rubric,
+        ): (target.id, pack.id, scenario.id)
+        for pack, scenario, target in jobs
+    }
+    for future in as_completed(futures):
+        target_id, pack_id, scenario_id = futures[future]
+        try:
             report = future.result()
+        except Exception as exc:
+            failure = {
+                "target": target_id,
+                "role_pack": pack_id,
+                "scenario": scenario_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+            failures.append(failure)
+            LOGGER.error(
+                "incomplete target=%s pack=%s scenario=%s error=%s",
+                target_id,
+                pack_id,
+                scenario_id,
+                exc,
+            )
+        else:
             reports.append(report)
             LOGGER.info("completed target=%s pack=%s scenario=%s", target_id, pack_id, scenario_id)
+    executor.shutdown(wait=True)
 
     leaderboard = _build_leaderboard(output_root, reports, target_specs, judge_specs, user_spec)
     manifest["completed_at"] = datetime.now(timezone.utc).isoformat()
-    manifest["status"] = "complete"
+    manifest["status"] = "partial" if failures else "complete"
+    manifest["failures"] = failures
     _write_json(output_root / "manifest.json", manifest)
     _write_json(output_root / "leaderboard.json", leaderboard)
     return leaderboard
+
+
+def _generate_scenario_conversation(
+    output_root: Path,
+    role_pack: RolePack,
+    scenario: ScenarioDefinition,
+    target_spec: ModelSpec,
+    user_spec: ModelSpec | None,
+    max_output_tokens: int,
+) -> Conversation:
+    stem = f"{_safe_name(role_pack.id)}__{_safe_name(scenario.id)}"
+    conversation_path = (
+        output_root / "conversations" / _safe_name(target_spec.id) / f"{stem}.json"
+    )
+    return _generate_conversation(
+        conversation_path,
+        role_pack.roles[scenario.role_id],
+        scenario,
+        target_spec,
+        user_spec,
+        max_output_tokens,
+    )
 
 
 def _run_scenario(
@@ -215,6 +297,7 @@ def _generate_conversation(
     user_spec: ModelSpec | None,
     max_output_tokens: int,
 ) -> Conversation:
+    pending_path = path.with_suffix(".pending-user.json")
     if path.is_file():
         existing = Conversation.from_dict(json.loads(path.read_text(encoding="utf-8")))
         if existing.target_model != target_spec.id:
@@ -233,9 +316,28 @@ def _generate_conversation(
     if len(turns) > len(scenario.user_messages):
         raise SchemaError(f"Existing conversation is longer than scenario: {path}")
 
+    pending_user: Dict[str, Any] | None = None
+    if pending_path.is_file():
+        value = json.loads(pending_path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise SchemaError(f"Pending user checkpoint is not an object: {pending_path}")
+        pending_turn = int(value.get("turn", 0))
+        if pending_turn <= len(turns):
+            pending_path.unlink()
+        elif pending_turn != len(turns) + 1 or not isinstance(value.get("user"), str):
+            raise SchemaError(f"Pending user checkpoint does not match conversation: {pending_path}")
+        else:
+            pending_user = value
+
     system_prompt = _target_system_prompt(role)
     for index in range(len(turns), len(scenario.user_messages)):
-        if index == 0 or scenario.mode == "scripted":
+        user_call: Dict[str, Any] | None = None
+        if pending_user is not None and int(pending_user["turn"]) == index + 1:
+            user_message = str(pending_user["user"])
+            checkpoint_call = pending_user.get("generation_call")
+            if isinstance(checkpoint_call, dict):
+                user_call = checkpoint_call
+        elif index == 0 or scenario.mode == "scripted":
             user_message = scenario.user_messages[index]
         else:
             if user_spec is None:
@@ -253,6 +355,15 @@ def _generate_conversation(
             user_message = user_result.text
             user_call = user_result.to_dict()
             user_call["purpose"] = "user_simulator"
+        _write_json(
+            pending_path,
+            {
+                "turn": index + 1,
+                "user": user_message,
+                "generation_call": user_call,
+            },
+        )
+        if user_call is not None:
             metadata.setdefault("generation_calls", []).append(user_call)
         messages: List[Dict[str, str]] = []
         for item in turns:
@@ -277,6 +388,8 @@ def _generate_conversation(
             metadata=metadata,
         )
         _write_json(path, _conversation_to_dict(conversation))
+        pending_path.unlink(missing_ok=True)
+        pending_user = None
         LOGGER.info("generated target=%s scenario=%s turn=%s", target_spec.id, scenario.id, index + 1)
     return Conversation(
         role_id=role.id,
@@ -304,7 +417,8 @@ def _generate_base_judgments(
             continue
         call_attempts = []
         last_error: Exception | None = None
-        for _ in range(3):
+        attempts = 1 if judge_spec.provider in EXPENSIVE_JUDGE_PROVIDERS else 3
+        for _ in range(attempts):
             try:
                 result = generate_text(
                     judge_spec,
@@ -312,8 +426,19 @@ def _generate_base_judgments(
                     [{"role": "user", "content": request.user_prompt}],
                     max_output_tokens=max_output_tokens,
                     json_mode=True,
+                    json_schema=_base_judge_json_schema(
+                        role,
+                        len(conversation.turns),
+                        fixed_turn_keys=judge_spec.provider == "anthropic",
+                    ),
                 )
                 call_attempts.append(result.to_dict())
+                _record_raw_judge_attempt(
+                    path,
+                    judge_spec,
+                    scenario.id,
+                    result,
+                )
                 artifact = parse_base_judge_response(
                     result.text,
                     judge_spec.id,
@@ -325,6 +450,8 @@ def _generate_base_judgments(
                 existing[judge_spec.id] = artifact
                 LOGGER.info("base judged judge=%s scenario=%s", judge_spec.id, scenario.id)
                 break
+            except RateLimitError:
+                raise
             except (KeyError, TypeError, ValueError, SchemaError, ProviderError) as exc:
                 last_error = exc
         else:
@@ -352,7 +479,8 @@ def _generate_judgments(
                 continue
             call_attempts = []
             last_error: Exception | None = None
-            for _ in range(3):
+            attempts = 1 if judge_spec.provider in EXPENSIVE_JUDGE_PROVIDERS else 3
+            for _ in range(attempts):
                 try:
                     result = generate_text(
                         judge_spec,
@@ -360,8 +488,19 @@ def _generate_judgments(
                         [{"role": "user", "content": request.user_prompt}],
                         max_output_tokens=max_output_tokens,
                         json_mode=True,
+                        json_schema=_judge_json_schema(
+                            role,
+                            string_scores=judge_spec.provider == "anthropic",
+                        ),
                     )
                     call_attempts.append(result.to_dict())
+                    _record_raw_judge_attempt(
+                        path,
+                        judge_spec,
+                        scenario.id,
+                        result,
+                        turn=turn.index,
+                    )
                     evaluation = parse_judge_response(
                         result.text,
                         judge_spec.id,
@@ -382,6 +521,8 @@ def _generate_judgments(
                         turn.index,
                     )
                     break
+                except RateLimitError:
+                    raise
                 except (KeyError, TypeError, ValueError, SchemaError, ProviderError) as exc:
                     last_error = exc
             else:
@@ -390,6 +531,177 @@ def _generate_judgments(
                 )
     ordered = [existing[(spec.id, turn.index)] for turn in conversation.turns for spec in judge_specs]
     return [JudgeEvaluation.from_dict(item, role) for item in ordered]
+
+
+def _base_judge_json_schema(
+    role: RoleDefinition,
+    turns: int,
+    *,
+    fixed_turn_keys: bool = False,
+) -> Dict[str, Any]:
+    rule_ids = [rule.id for rule in role.judge_rules]
+    score_schema = (
+        {"type": "string", "enum": ["1", "2", "3", "4", "5"]}
+        if fixed_turn_keys
+        else {"type": "integer", "enum": [1, 2, 3, 4, 5]}
+    )
+    finding = {
+        "type": "object",
+        "properties": {
+            "rule_id": {"type": "string", "enum": rule_ids},
+            "verdict": {
+                "type": "string",
+                "enum": ["pass", "partial", "fail", "not_applicable"],
+            },
+            "confidence": {"type": "number"},
+            "evidence": {"type": "string"},
+            "rationale": {"type": "string"},
+        },
+        "required": ["rule_id", "verdict", "confidence", "evidence", "rationale"],
+        "additionalProperties": False,
+    }
+    turn_fidelity = {
+        "type": "object",
+        "properties": {
+            "turn": {"type": "integer", "enum": list(range(1, turns + 1))},
+            "score": score_schema,
+            "failed_rule_ids": {
+                "type": "array",
+                "items": {"type": "string", "enum": rule_ids},
+            },
+        },
+        "required": ["turn", "score", "failed_rule_ids"],
+        "additionalProperties": False,
+    }
+    if fixed_turn_keys:
+        fixed_turn_value = {
+            "type": "object",
+            "properties": {
+                "score": score_schema,
+                "failed_rule_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": rule_ids},
+                },
+            },
+            "required": ["score", "failed_rule_ids"],
+            "additionalProperties": False,
+        }
+        turn_fidelity_schema: Dict[str, Any] = {
+            "type": "object",
+            "properties": {str(turn): fixed_turn_value for turn in range(1, turns + 1)},
+            "required": [str(turn) for turn in range(1, turns + 1)],
+            "additionalProperties": False,
+        }
+    else:
+        turn_fidelity_schema = {
+            "type": "array",
+            "items": turn_fidelity,
+            "minItems": turns,
+            "maxItems": turns,
+        }
+    return {
+        "type": "object",
+        "properties": {
+            "evaluation_reason": {"type": "string"},
+            "legacy_scores": {
+                "type": "object",
+                "properties": {
+                    dimension: score_schema
+                    for dimension in LEGACY_DIMENSIONS
+                },
+                "required": list(LEGACY_DIMENSIONS),
+                "additionalProperties": False,
+            },
+            "rule_findings": {
+                "type": "array",
+                "items": finding,
+                "minItems": len(rule_ids),
+                "maxItems": len(rule_ids),
+            },
+            "turn_fidelity": turn_fidelity_schema,
+        },
+        "required": ["evaluation_reason", "legacy_scores", "rule_findings", "turn_fidelity"],
+        "additionalProperties": False,
+    }
+
+
+def _judge_json_schema(
+    role: RoleDefinition,
+    *,
+    string_scores: bool = False,
+) -> Dict[str, Any]:
+    rule_ids = [rule.id for rule in role.judge_rules]
+    score_schema = (
+        {"type": "string", "enum": ["1", "2", "3", "4", "5"]}
+        if string_scores
+        else {"type": "integer", "enum": [1, 2, 3, 4, 5]}
+    )
+    return {
+        "type": "object",
+        "properties": {
+            "findings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "rule_id": {"type": "string", "enum": rule_ids},
+                        "verdict": {
+                            "type": "string",
+                            "enum": ["pass", "partial", "fail", "not_applicable"],
+                        },
+                        "confidence": {"type": "number"},
+                        "evidence": {"type": "string"},
+                        "rationale": {"type": "string"},
+                    },
+                    "required": [
+                        "rule_id",
+                        "verdict",
+                        "confidence",
+                        "evidence",
+                        "rationale",
+                    ],
+                    "additionalProperties": False,
+                },
+                "minItems": len(rule_ids),
+                "maxItems": len(rule_ids),
+            },
+            "quality_scores": {
+                "type": "object",
+                "properties": {
+                    dimension: score_schema
+                    for dimension in QUALITY_DIMENSIONS
+                },
+                "required": list(QUALITY_DIMENSIONS),
+                "additionalProperties": False,
+            },
+            "notes": {"type": "string"},
+        },
+        "required": ["findings", "quality_scores", "notes"],
+        "additionalProperties": False,
+    }
+
+
+def _record_raw_judge_attempt(
+    path: Path,
+    judge_spec: ModelSpec,
+    scenario_id: str,
+    result: GenerationResult,
+    *,
+    turn: int | None = None,
+) -> None:
+    if judge_spec.provider not in EXPENSIVE_JUDGE_PROVIDERS:
+        return
+    _append_jsonl(
+        path.with_suffix(".raw-attempts.jsonl"),
+        {
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "scenario_id": scenario_id,
+            "turn": turn,
+            "judge_id": judge_spec.id,
+            "call": result.to_dict(),
+            "raw_response": result.text,
+        },
+    )
 
 
 def _target_system_prompt(role: RoleDefinition) -> str:
