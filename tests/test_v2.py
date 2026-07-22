@@ -500,25 +500,26 @@ class LegacySnapshotTests(unittest.TestCase):
         self.assertEqual(top["overall_average"], 4.403)
         self.assertEqual(top["dimension_scores"]["Roleplay Adherence"], 4.6)
 
-        readme_rows = {}
+        published_rows = {}
         in_table = False
-        for line in (ROOT / "README.md").read_text(encoding="utf-8").splitlines():
+        legacy_readme = ROOT / "docs" / "upstream-v1.md"
+        for line in legacy_readme.read_text(encoding="utf-8").splitlines():
             if line.startswith("| target_model_name"):
                 in_table = True
                 continue
             if not in_table or line.startswith("|:"):
                 continue
             if not line.startswith("|"):
-                if readme_rows:
+                if published_rows:
                     break
                 continue
             cells = [cell.strip() for cell in line.strip("|").split("|")]
             if len(cells) == 10:
-                readme_rows[cells[0]] = [float(value) for value in cells[1:]]
+                published_rows[cells[0]] = [float(value) for value in cells[1:]]
 
-        self.assertEqual(len(readme_rows), 32)
+        self.assertEqual(len(published_rows), 32)
         for row in snapshot["leaderboard"]:
-            published = readme_rows[row["target_model"]]
+            published = published_rows[row["target_model"]]
             reconstructed = [row["overall_average"]] + [
                 row["dimension_scores"][dimension]
                 for dimension in snapshot["protocol"]["dimensions"]
