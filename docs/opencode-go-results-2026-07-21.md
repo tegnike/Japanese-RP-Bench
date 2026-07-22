@@ -1,5 +1,13 @@
 # Japanese-RP-Bench v2 OpenCode Go Results（2026-07-21）
 
+> **Reasoning条件に関する注意:** この文書は、最小ReasoningをAPI要求へ明示する実装を
+> 導入する前の結果です。設定ファイル上は対象モデルに`reasoning: none`を指定していましたが、
+> 当時のOpenCode Goプロバイダー実装はその値をAPI payloadへ転送していませんでした。
+> したがって、対象生成には各モデルのプロバイダー既定Reasoningと
+> `max_output_tokens: 1024`が使われており、[現行のReasoning policy](benchmark-v2.md#reasoning-policy)
+> に基づく最小Reasoning実行の結果ではありません。最小Reasoningでの再評価結果は、完了後に
+> 別実行として公開し、この文書とREADMEの比較表を更新します。
+
 ## 実行条件
 
 - Base: 元のSFWデータセット30設定、各10往復、従来8指標
@@ -7,6 +15,8 @@
 - Challenge: 追加Role Packの6シナリオ、計27ターン
 - 対象: Kimi K3、GLM-5.2、Qwen3.7 Max、DeepSeek V4 Pro、MiniMax M3、MiMo-V2.5-Pro
 - 対象API: OpenCode Go
+- 対象Reasoning: プロバイダー既定（設定値がAPI payloadへ未転送）
+- 対象の最大出力: 1,024 token
 - ユーザー役: GPT-5.4 mini
 - Judge: GPT-5.4 mini、Gemini 3.5 Flash、Claude Haiku 4.5
 - Judgeは評価対象モデル名を渡さないブラインド評価
