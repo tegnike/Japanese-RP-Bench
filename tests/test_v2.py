@@ -22,7 +22,11 @@ from japanese_rp_bench.v2.providers import generate_text
 from japanese_rp_bench.v2.rules import evaluate_deterministic_rules
 from japanese_rp_bench.v2.scoring import score_conversation
 from japanese_rp_bench.v2.schemas import Conversation, JudgeEvaluation, SchemaError, Verdict
-from japanese_rp_bench.v2.runner import _generate_base_judgments, _generate_conversation
+from japanese_rp_bench.v2.runner import (
+    _generate_base_judgments,
+    _generate_conversation,
+    _is_complete_judge_artifact,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -141,6 +145,13 @@ class JudgeContractTests(unittest.TestCase):
         )
         with self.assertRaises(SchemaError):
             parse_judge_response(incomplete, "judge-a", 1, self.role)
+
+    def test_parser_rejects_duplicate_rule_findings(self) -> None:
+        payload = judge_evaluations(self.role)[0].to_dict()
+        payload["findings"].append(dict(payload["findings"][0]))
+        with self.assertRaisesRegex(SchemaError, "duplicates"):
+            parse_judge_response(json.dumps(payload), "judge-a", 1, self.role)
+        self.assertFalse(_is_complete_judge_artifact(payload, self.role))
 
 
 class ScoringTests(unittest.TestCase):

@@ -119,16 +119,32 @@ def parse_judge_response(
     payload["turn"] = turn
     evaluation = JudgeEvaluation.from_dict(payload, role)
 
+    validate_judge_evaluation(evaluation, role)
+    return evaluation
+
+
+def validate_judge_evaluation(
+    evaluation: JudgeEvaluation,
+    role: RoleDefinition,
+) -> None:
+    """Require exactly one finding per judge rule and every quality dimension."""
+
     expected_rules = {rule.id for rule in role.judge_rules}
-    actual_rules = {finding.rule_id for finding in evaluation.findings}
-    if actual_rules != expected_rules:
+    actual_rule_ids = [finding.rule_id for finding in evaluation.findings]
+    actual_rules = set(actual_rule_ids)
+    duplicates = sorted(
+        rule_id for rule_id in actual_rules if actual_rule_ids.count(rule_id) > 1
+    )
+    if actual_rules != expected_rules or duplicates:
         missing = sorted(expected_rules - actual_rules)
         extra = sorted(actual_rules - expected_rules)
-        raise SchemaError(f"Judge rule coverage mismatch; missing={missing}, extra={extra}")
+        raise SchemaError(
+            "Judge rule coverage mismatch; "
+            f"missing={missing}, extra={extra}, duplicates={duplicates}"
+        )
     missing_dimensions = sorted(set(QUALITY_DIMENSIONS) - set(evaluation.quality_scores))
     if missing_dimensions:
         raise SchemaError(f"Judge quality score coverage mismatch: {missing_dimensions}")
-    return evaluation
 
 
 def _extract_json_object(raw_response: str) -> Dict[str, Any]:

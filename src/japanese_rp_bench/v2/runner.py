@@ -30,7 +30,12 @@ from japanese_rp_bench.v2.base import (
     parse_base_judge_response,
     score_base_conversation,
 )
-from japanese_rp_bench.v2.judge import QUALITY_DIMENSIONS, build_judge_request, parse_judge_response
+from japanese_rp_bench.v2.judge import (
+    QUALITY_DIMENSIONS,
+    build_judge_request,
+    parse_judge_response,
+    validate_judge_evaluation,
+)
 from japanese_rp_bench.v2.providers import (
     GenerationResult,
     ModelSpec,
@@ -463,7 +468,9 @@ def _collect_batch_judge_tasks(
             continue
 
         existing = {
-            (str(item.get("judge_id")), int(item.get("turn", 0))) for item in artifacts
+            (str(item.get("judge_id")), int(item.get("turn", 0)))
+            for item in artifacts
+            if _is_complete_judge_artifact(item, role)
         }
         for turn in conversation.turns:
             if (judge_spec.id, turn.index) in existing:
@@ -523,6 +530,18 @@ def _save_batch_judgment(task: _BatchJudgeTask, result: GenerationResult) -> Non
         "raw_response": result.text,
     }
     _append_jsonl(task.judgment_path, artifact)
+
+
+def _is_complete_judge_artifact(
+    artifact: Mapping[str, Any],
+    role: RoleDefinition,
+) -> bool:
+    try:
+        evaluation = JudgeEvaluation.from_dict(artifact, role)
+        validate_judge_evaluation(evaluation, role)
+    except (KeyError, TypeError, ValueError, SchemaError):
+        return False
+    return True
 
 
 def _batch_task_key(
@@ -785,7 +804,11 @@ def _generate_judgments(
     max_output_tokens: int,
 ) -> List[JudgeEvaluation]:
     artifacts = _read_jsonl(path) if path.is_file() else []
-    existing = {(str(item["judge_id"]), int(item["turn"])): item for item in artifacts}
+    existing = {
+        (str(item["judge_id"]), int(item["turn"])): item
+        for item in artifacts
+        if _is_complete_judge_artifact(item, role)
+    }
     for turn in conversation.turns:
         request = build_judge_request(role, scenario, conversation, turn.index)
         for judge_spec in judge_specs:
