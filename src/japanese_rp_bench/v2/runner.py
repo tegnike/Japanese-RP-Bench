@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
@@ -13,6 +13,14 @@ from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
 
 import yaml
 
+from japanese_rp_bench.v2.batch import (
+    BatchRequest,
+    batch_state,
+    build_batch_request,
+    read_batch_results,
+    submit_batch,
+    wait_for_batch,
+)
 from japanese_rp_bench.v2.base import (
     LEGACY_DATASET_URL,
     LEGACY_DIMENSIONS,
@@ -55,6 +63,21 @@ SUMMARY_METRICS = (
     "recovery_score",
 )
 EXPENSIVE_JUDGE_PROVIDERS = {"gemini", "anthropic"}
+
+
+@dataclass(frozen=True)
+class _BatchJudgeTask:
+    key: str
+    judgment_path: Path
+    judge_spec: ModelSpec
+    role: RoleDefinition
+    scenario: ScenarioDefinition
+    conversation: Conversation
+    turn: int | None
+    system_prompt: str
+    user_prompt: str
+    max_output_tokens: int
+    json_schema: Mapping[str, Any]
 
 
 def run_benchmark(config_path: str | Path, output_path: str | Path, workers: int = 4) -> Dict[str, Any]:
@@ -152,6 +175,14 @@ def run_benchmark(config_path: str | Path, output_path: str | Path, workers: int
     else:
         generation_executor.shutdown(wait=True)
 
+    _run_batch_judges(
+        output_root,
+        jobs,
+        judge_specs,
+        config,
+        legacy_rubric,
+    )
+
     reports: List[Dict[str, Any]] = []
     failures: List[Dict[str, str]] = []
     executor = ThreadPoolExecutor(max_workers=workers)
@@ -223,6 +254,286 @@ def _generate_scenario_conversation(
         user_spec,
         max_output_tokens,
     )
+
+
+def _run_batch_judges(
+    output_root: Path,
+    jobs: Sequence[Tuple[RolePack, ScenarioDefinition, ModelSpec]],
+    judge_specs: Sequence[ModelSpec],
+    config: Mapping[str, Any],
+    legacy_rubric: str,
+) -> None:
+    batch_specs = [spec for spec in judge_specs if spec.batch]
+    if not batch_specs:
+        return
+    batch_config = config["evaluation"].get("batch") or {}
+    poll_interval = float(batch_config.get("poll_interval_seconds", 30))
+    max_attempts = int(batch_config.get("max_attempts", 2))
+    if poll_interval < 1:
+        raise SchemaError("evaluation.batch.poll_interval_seconds must be at least 1")
+    if max_attempts < 1:
+        raise SchemaError("evaluation.batch.max_attempts must be at least 1")
+
+    while True:
+        active: List[Tuple[ModelSpec, Path, Dict[str, Any]]] = []
+        pending_by_spec: Dict[str, List[_BatchJudgeTask]] = {
+            spec.id: _collect_batch_judge_tasks(
+                output_root,
+                jobs,
+                spec,
+                config,
+                legacy_rubric,
+            )
+            for spec in batch_specs
+        }
+        for spec in batch_specs:
+            batch_dir = output_root / "batches" / _safe_name(spec.id)
+            state_paths = sorted(batch_dir.glob("attempt-*.json"))
+            unprocessed = []
+            for path in state_paths:
+                state_value = json.loads(path.read_text(encoding="utf-8"))
+                if not state_value.get("processed_at"):
+                    unprocessed.append((path, state_value))
+            if unprocessed:
+                active.extend((spec, path, value) for path, value in unprocessed)
+                continue
+
+            pending = pending_by_spec[spec.id]
+            if not pending:
+                continue
+            attempt = len(state_paths) + 1
+            if attempt > max_attempts:
+                sample = ", ".join(task.key for task in pending[:3])
+                raise SchemaError(
+                    f"Batch judge {spec.id} still has {len(pending)} missing results "
+                    f"after {max_attempts} attempts: {sample}"
+                )
+            provider_requests = [
+                build_batch_request(
+                    spec,
+                    f"r{index:05d}",
+                    task.system_prompt,
+                    [{"role": "user", "content": task.user_prompt}],
+                    task.max_output_tokens,
+                    json_mode=True,
+                    json_schema=task.json_schema,
+                )
+                for index, task in enumerate(pending)
+            ]
+            submitted = submit_batch(
+                spec,
+                provider_requests,
+                f"japanese-rp-bench-{_safe_name(spec.id)}-a{attempt}",
+            )
+            state = {
+                "schema_version": "1.0",
+                "judge_id": spec.id,
+                "provider": spec.provider,
+                "model": spec.model,
+                "attempt": attempt,
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "batch_id": submitted["batch_id"],
+                "provider_response": submitted["provider_response"],
+                "requests": [
+                    {"custom_id": request.custom_id, "task_key": task.key}
+                    for request, task in zip(provider_requests, pending)
+                ],
+            }
+            state_path = batch_dir / f"attempt-{attempt:02d}.json"
+            _write_json(state_path, state)
+            active.append((spec, state_path, state))
+            LOGGER.info(
+                "submitted batch judge=%s requests=%s batch=%s",
+                spec.id,
+                len(provider_requests),
+                submitted["batch_id"],
+            )
+
+        if not active:
+            return
+
+        for spec, state_path, state in active:
+            batch_id = str(state["batch_id"])
+            status = wait_for_batch(spec, batch_id, poll_interval)
+            request_refs = state.get("requests") or []
+            provider_requests = [
+                BatchRequest(str(item["custom_id"]), {}) for item in request_refs
+            ]
+            results = read_batch_results(spec, batch_id, status, provider_requests)
+            task_map = {
+                task.key: task
+                for task in _collect_batch_judge_tasks(
+                    output_root,
+                    jobs,
+                    spec,
+                    config,
+                    legacy_rubric,
+                )
+            }
+            custom_to_key = {
+                str(item["custom_id"]): str(item["task_key"])
+                for item in request_refs
+            }
+            errors: List[Dict[str, str]] = []
+            for item in results:
+                task_key = custom_to_key.get(item.custom_id)
+                task = task_map.get(task_key or "")
+                if task is None:
+                    continue
+                if item.generation is None:
+                    errors.append(
+                        {
+                            "custom_id": item.custom_id,
+                            "task_key": task.key,
+                            "error": item.error or "unknown batch result error",
+                        }
+                    )
+                    continue
+                try:
+                    _save_batch_judgment(task, item.generation)
+                except (KeyError, TypeError, ValueError, SchemaError, ProviderError) as exc:
+                    errors.append(
+                        {
+                            "custom_id": item.custom_id,
+                            "task_key": task.key,
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+                    )
+            state["completed_at"] = datetime.now(timezone.utc).isoformat()
+            state["provider_state"] = batch_state(spec, status)
+            state["provider_status"] = status
+            state["errors"] = errors
+            state["processed_at"] = datetime.now(timezone.utc).isoformat()
+            _write_json(state_path, state)
+            LOGGER.info(
+                "processed batch judge=%s results=%s errors=%s batch=%s",
+                spec.id,
+                len(results),
+                len(errors),
+                batch_id,
+            )
+
+
+def _collect_batch_judge_tasks(
+    output_root: Path,
+    jobs: Sequence[Tuple[RolePack, ScenarioDefinition, ModelSpec]],
+    judge_spec: ModelSpec,
+    config: Mapping[str, Any],
+    legacy_rubric: str,
+) -> List[_BatchJudgeTask]:
+    tasks: List[_BatchJudgeTask] = []
+    for role_pack, scenario, target_spec in jobs:
+        role = role_pack.roles[scenario.role_id]
+        stem = f"{_safe_name(role_pack.id)}__{_safe_name(scenario.id)}"
+        conversation_path = (
+            output_root / "conversations" / _safe_name(target_spec.id) / f"{stem}.json"
+        )
+        conversation = Conversation.from_dict(
+            json.loads(conversation_path.read_text(encoding="utf-8"))
+        )
+        judgment_path = (
+            output_root / "judgments" / _safe_name(target_spec.id) / f"{stem}.jsonl"
+        )
+        artifacts = _read_jsonl(judgment_path) if judgment_path.is_file() else []
+        if scenario.track == "legacy-base":
+            if any(str(item.get("judge_id")) == judge_spec.id for item in artifacts):
+                continue
+            request = build_base_judge_request(role, scenario, conversation, legacy_rubric)
+            tasks.append(
+                _BatchJudgeTask(
+                    key=_batch_task_key(target_spec.id, role_pack.id, scenario.id, judge_spec.id),
+                    judgment_path=judgment_path,
+                    judge_spec=judge_spec,
+                    role=role,
+                    scenario=scenario,
+                    conversation=conversation,
+                    turn=None,
+                    system_prompt=request.system_prompt,
+                    user_prompt=request.user_prompt,
+                    max_output_tokens=int(
+                        config["evaluation"].get("base_judge_max_output_tokens", 6144)
+                    ),
+                    json_schema=_base_judge_json_schema(
+                        role,
+                        len(conversation.turns),
+                        fixed_turn_keys=judge_spec.provider == "anthropic",
+                    ),
+                )
+            )
+            continue
+
+        existing = {
+            (str(item.get("judge_id")), int(item.get("turn", 0))) for item in artifacts
+        }
+        for turn in conversation.turns:
+            if (judge_spec.id, turn.index) in existing:
+                continue
+            request = build_judge_request(role, scenario, conversation, turn.index)
+            tasks.append(
+                _BatchJudgeTask(
+                    key=_batch_task_key(
+                        target_spec.id,
+                        role_pack.id,
+                        scenario.id,
+                        judge_spec.id,
+                        turn.index,
+                    ),
+                    judgment_path=judgment_path,
+                    judge_spec=judge_spec,
+                    role=role,
+                    scenario=scenario,
+                    conversation=conversation,
+                    turn=turn.index,
+                    system_prompt=request.system_prompt,
+                    user_prompt=request.user_prompt,
+                    max_output_tokens=int(config["evaluation"].get("judge_max_output_tokens", 4096)),
+                    json_schema=_judge_json_schema(
+                        role,
+                        string_scores=judge_spec.provider == "anthropic",
+                    ),
+                )
+            )
+    return tasks
+
+
+def _save_batch_judgment(task: _BatchJudgeTask, result: GenerationResult) -> None:
+    _record_raw_judge_attempt(
+        task.judgment_path,
+        task.judge_spec,
+        task.scenario.id,
+        result,
+        turn=task.turn,
+    )
+    if task.turn is None:
+        artifact = parse_base_judge_response(
+            result.text,
+            task.judge_spec.id,
+            task.role,
+            len(task.conversation.turns),
+        )
+    else:
+        artifact = parse_judge_response(
+            result.text,
+            task.judge_spec.id,
+            task.turn,
+            task.role,
+        ).to_dict()
+    artifact["metadata"] = {
+        "calls": [result.to_dict()],
+        "raw_response": result.text,
+    }
+    _append_jsonl(task.judgment_path, artifact)
+
+
+def _batch_task_key(
+    target_id: str,
+    pack_id: str,
+    scenario_id: str,
+    judge_id: str,
+    turn: int | None = None,
+) -> str:
+    suffix = "base" if turn is None else f"turn-{turn}"
+    return "|".join((target_id, pack_id, scenario_id, judge_id, suffix))
 
 
 def _run_scenario(
@@ -415,6 +726,10 @@ def _generate_base_judgments(
     for judge_spec in judge_specs:
         if judge_spec.id in existing:
             continue
+        if judge_spec.batch:
+            raise SchemaError(
+                f"Batch judgment is missing after batch processing: {judge_spec.id} {scenario.id}"
+            )
         call_attempts = []
         last_error: Exception | None = None
         attempts = 1 if judge_spec.provider in EXPENSIVE_JUDGE_PROVIDERS else 3
@@ -477,6 +792,11 @@ def _generate_judgments(
             key = (judge_spec.id, turn.index)
             if key in existing:
                 continue
+            if judge_spec.batch:
+                raise SchemaError(
+                    "Batch judgment is missing after batch processing: "
+                    f"{judge_spec.id} {scenario.id} turn {turn.index}"
+                )
             call_attempts = []
             last_error: Exception | None = None
             attempts = 1 if judge_spec.provider in EXPENSIVE_JUDGE_PROVIDERS else 3
@@ -751,6 +1071,7 @@ def _build_leaderboard(
             "reasoning_tokens": 0,
             "cached_input_tokens": 0,
             "estimated_list_cost_usd": 0.0,
+            "estimated_effective_cost_usd": 0.0,
         }
 
     for path in (output_root / "conversations").glob("**/*.json"):
@@ -813,6 +1134,9 @@ def _build_leaderboard(
             }
     for usage in usage_by_model.values():
         usage["estimated_list_cost_usd"] = round(usage["estimated_list_cost_usd"], 6)
+        usage["estimated_effective_cost_usd"] = round(
+            usage["estimated_effective_cost_usd"], 6
+        )
     return {
         "schema_version": "2.0",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -822,9 +1146,15 @@ def _build_leaderboard(
             sum(value["estimated_list_cost_usd"] for value in usage_by_model.values()),
             6,
         ),
+        "estimated_effective_cost_usd": round(
+            sum(value["estimated_effective_cost_usd"] for value in usage_by_model.values()),
+            6,
+        ),
         "notes": [
             "Scores are macro-averaged across scenarios; no weighted overall score is defined.",
-            "Costs are list-price estimates and do not account for free tiers or data-sharing incentives.",
+            "List costs do not account for discounts; effective costs apply the 50% "
+            "Gemini/Anthropic Batch API multiplier recorded on each call.",
+            "Effective costs do not account for free tiers or data-sharing incentives.",
         ],
     }
 
@@ -850,8 +1180,13 @@ def _accumulate_usage(
         "output_tokens": 0,
         "reasoning_tokens": 0,
         "cached_input_tokens": 0,
+        "billing_mode": str(call.get("billing_mode", "standard")),
     }.items()})
-    usage["estimated_list_cost_usd"] += estimated_list_cost(specs[spec_id], result)
+    list_cost = estimated_list_cost(specs[spec_id], result)
+    usage["estimated_list_cost_usd"] += list_cost
+    usage["estimated_effective_cost_usd"] += list_cost * (
+        0.5 if result.billing_mode == "batch" else 1.0
+    )
 
 
 def _load_model_specs(config: Mapping[str, Any], key: str) -> List[ModelSpec]:

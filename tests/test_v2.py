@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
+from japanese_rp_bench.v2.batch import BatchRequest, read_batch_results, submit_batch
 from japanese_rp_bench.v2.cli import _prepare_judging, _score
 from japanese_rp_bench.v2.base import (
     LEGACY_DIMENSIONS,
@@ -314,6 +315,7 @@ class ProviderTests(unittest.TestCase):
         )
         payload = post.call_args.args[1]
         self.assertEqual(payload["messages"][0], {"role": "system", "content": "system"})
+        self.assertEqual(payload["reasoning_effort"], "none")
 
     def test_opencode_go_anthropic_endpoint_is_selected(self) -> None:
         spec = ModelSpec(
@@ -344,6 +346,71 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(result.text, "応答")
         self.assertEqual(result.provider, "opencode_go")
         self.assertEqual(post.call_args.args[0], "https://opencode.ai/zen/go/v1/messages")
+        self.assertEqual(
+            post.call_args.args[1]["thinking"],
+            {"type": "disabled"},
+        )
+
+    def test_batch_flag_is_limited_to_discounted_providers(self) -> None:
+        data = {
+            "id": "go-test",
+            "provider": "opencode_go",
+            "model": "glm-5.2",
+            "api_key_env": "KEY",
+            "reasoning": "none",
+            "input_price_per_million": 1,
+            "output_price_per_million": 1,
+            "api_style": "openai_chat",
+            "batch": True,
+        }
+        with self.assertRaisesRegex(SchemaError, "only supported"):
+            ModelSpec.from_dict(data)
+
+    def test_gemini_batch_submission_and_results_are_normalized(self) -> None:
+        spec = ModelSpec(
+            "judge-gemini",
+            "gemini",
+            "gemini-test",
+            "KEY",
+            "low",
+            1,
+            2,
+            batch=True,
+        )
+        request = BatchRequest("r00000", {"contents": []})
+        created = {"name": "batches/123", "metadata": {"state": "JOB_STATE_PENDING"}}
+        response = {
+            "responseId": "response-1",
+            "modelVersion": "gemini-test-001",
+            "candidates": [{"content": {"parts": [{"text": '{"answer":"ok"}'}]}}],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 4},
+        }
+        with patch.dict("os.environ", {"KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.batch._post_json", return_value=created
+        ) as post:
+            submitted = submit_batch(spec, [request], "test-batch")
+        self.assertEqual(submitted["batch_id"], "batches/123")
+        self.assertEqual(
+            post.call_args.args[1]["batch"]["input_config"]["requests"]["requests"][0][
+                "metadata"
+            ],
+            {"key": "r00000"},
+        )
+        results = read_batch_results(
+            spec,
+            "batches/123",
+            {
+                "metadata": {"state": "JOB_STATE_SUCCEEDED"},
+                "response": {
+                    "inlinedResponses": [
+                        {"metadata": {"key": "r00000"}, "response": response}
+                    ]
+                },
+            },
+            [request],
+        )
+        self.assertEqual(results[0].generation.text, '{"answer":"ok"}')
+        self.assertEqual(results[0].generation.billing_mode, "batch")
 
     def test_openai_usage_is_normalized(self) -> None:
         spec = ModelSpec(

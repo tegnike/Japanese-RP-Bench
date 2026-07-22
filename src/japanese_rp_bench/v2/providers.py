@@ -35,6 +35,7 @@ class ModelSpec:
     input_price_per_million: float
     output_price_per_million: float
     api_style: str = ""
+    batch: bool = False
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "ModelSpec":
@@ -62,6 +63,9 @@ class ModelSpec:
                 "OpenCode Go model spec requires api_style: "
                 "openai_chat or anthropic_messages"
             )
+        batch = bool(data.get("batch", False))
+        if batch and provider not in {"gemini", "anthropic"}:
+            raise SchemaError("Batch execution is only supported for Gemini and Anthropic models")
         return cls(
             id=str(data["id"]),
             provider=provider,
@@ -71,6 +75,7 @@ class ModelSpec:
             input_price_per_million=float(data["input_price_per_million"]),
             output_price_per_million=float(data["output_price_per_million"]),
             api_style=api_style,
+            batch=batch,
         )
 
 
@@ -85,6 +90,7 @@ class GenerationResult:
     output_tokens: int
     reasoning_tokens: int = 0
     cached_input_tokens: int = 0
+    billing_mode: str = "standard"
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -219,6 +225,33 @@ def _generate_gemini(
     json_mode: bool,
     json_schema: Mapping[str, Any] | None,
 ) -> GenerationResult:
+    payload = _build_gemini_payload(
+        spec,
+        system_prompt,
+        messages,
+        max_output_tokens,
+        json_mode,
+        json_schema,
+    )
+    response = _post_json(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{spec.model}:generateContent",
+        payload,
+        {"x-goog-api-key": api_key},
+        attempts=1,
+    )
+    if response.get("error"):
+        raise ProviderError(f"Gemini API error: {_safe_error(response['error'])}")
+    return _parse_gemini_response(spec, response)
+
+
+def _build_gemini_payload(
+    spec: ModelSpec,
+    system_prompt: str,
+    messages: Sequence[Mapping[str, str]],
+    max_output_tokens: int,
+    json_mode: bool,
+    json_schema: Mapping[str, Any] | None,
+) -> Dict[str, Any]:
     generation_config: Dict[str, Any] = {
         "maxOutputTokens": max_output_tokens,
         "thinkingConfig": {"thinkingLevel": spec.reasoning},
@@ -237,7 +270,7 @@ def _generate_gemini(
                 "minItems",
             },
         )
-    payload = {
+    return {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [
             {
@@ -248,14 +281,14 @@ def _generate_gemini(
         ],
         "generationConfig": generation_config,
     }
-    response = _post_json(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{spec.model}:generateContent",
-        payload,
-        {"x-goog-api-key": api_key},
-        attempts=1,
-    )
-    if response.get("error"):
-        raise ProviderError(f"Gemini API error: {_safe_error(response['error'])}")
+
+
+def _parse_gemini_response(
+    spec: ModelSpec,
+    response: Mapping[str, Any],
+    *,
+    billing_mode: str = "standard",
+) -> GenerationResult:
     text_parts = []
     for candidate in response.get("candidates", []):
         for part in (candidate.get("content") or {}).get("parts", []):
@@ -278,6 +311,7 @@ def _generate_gemini(
         output_tokens=output_tokens,
         reasoning_tokens=reasoning_tokens,
         cached_input_tokens=int(usage.get("cachedContentTokenCount", 0)),
+        billing_mode=billing_mode,
     )
 
 
@@ -337,6 +371,36 @@ def _generate_anthropic_messages(
     url: str,
     provider_name: str,
 ) -> GenerationResult:
+    payload = _build_anthropic_payload(
+        spec,
+        system_prompt,
+        messages,
+        max_output_tokens,
+        json_mode,
+        json_schema,
+    )
+    response = _post_json(
+        url,
+        payload,
+        {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+        },
+        attempts=1 if spec.provider == "anthropic" else 4,
+    )
+    if response.get("error"):
+        raise ProviderError(f"{provider_name} API error: {_safe_error(response['error'])}")
+    return _parse_anthropic_response(spec, response, provider_name=provider_name)
+
+
+def _build_anthropic_payload(
+    spec: ModelSpec,
+    system_prompt: str,
+    messages: Sequence[Mapping[str, str]],
+    max_output_tokens: int,
+    json_mode: bool,
+    json_schema: Mapping[str, Any] | None,
+) -> Dict[str, Any]:
     system = system_prompt
     if json_mode:
         system += "\n\nReturn only one valid JSON object without Markdown fences or commentary."
@@ -349,7 +413,9 @@ def _generate_anthropic_messages(
         ],
         "max_tokens": max_output_tokens,
     }
-    if spec.reasoning not in {"", "none", "minimal"}:
+    if spec.provider == "opencode_go" and spec.reasoning in {"none", "minimal"}:
+        payload["thinking"] = {"type": "disabled"}
+    elif spec.reasoning not in {"", "none", "minimal"}:
         payload["thinking"] = {"type": "enabled", "budget_tokens": 1024}
     if json_schema is not None:
         payload["output_config"] = {
@@ -361,17 +427,16 @@ def _generate_anthropic_messages(
                 ),
             }
         }
-    response = _post_json(
-        url,
-        payload,
-        {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-        attempts=1 if spec.provider == "anthropic" else 4,
-    )
-    if response.get("error"):
-        raise ProviderError(f"{provider_name} API error: {_safe_error(response['error'])}")
+    return payload
+
+
+def _parse_anthropic_response(
+    spec: ModelSpec,
+    response: Mapping[str, Any],
+    *,
+    provider_name: str = "Anthropic",
+    billing_mode: str = "standard",
+) -> GenerationResult:
     text = "\n".join(
         str(block["text"])
         for block in response.get("content", [])
@@ -391,6 +456,7 @@ def _generate_anthropic_messages(
         input_tokens=int(usage.get("input_tokens", 0)),
         output_tokens=int(usage.get("output_tokens", 0)),
         cached_input_tokens=int(usage.get("cache_read_input_tokens", 0)),
+        billing_mode=billing_mode,
     )
 
 
@@ -417,6 +483,8 @@ def _generate_opencode_go_chat(
         "max_tokens": max_output_tokens,
         "stream": False,
     }
+    if spec.reasoning:
+        payload["reasoning_effort"] = spec.reasoning
     response = _post_json(
         "https://opencode.ai/zen/go/v1/chat/completions",
         payload,
