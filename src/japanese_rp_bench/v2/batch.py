@@ -1,4 +1,4 @@
-"""Resumable provider Batch API adapters for asynchronous judge calls."""
+"""Resumable provider Batch API adapters for asynchronous generation calls."""
 
 from __future__ import annotations
 
@@ -7,18 +7,22 @@ import os
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Sequence
 
 from japanese_rp_bench.v2.providers import (
+    GenerationOutcomeError,
     GenerationResult,
     ModelSpec,
     ProviderError,
     RateLimitError,
     _build_anthropic_payload,
     _build_gemini_payload,
+    _build_openai_payload,
     _parse_anthropic_response,
     _parse_gemini_response,
+    _parse_openai_response,
     _post_json,
     _safe_error,
     _safe_error_body,
@@ -35,6 +39,7 @@ GEMINI_TERMINAL_STATES = {
     "BATCH_STATE_CANCELLED",
     "BATCH_STATE_EXPIRED",
 }
+OPENAI_TERMINAL_STATES = {"completed", "failed", "expired", "cancelled"}
 
 
 @dataclass(frozen=True)
@@ -48,6 +53,7 @@ class BatchItemResult:
     custom_id: str
     generation: GenerationResult | None
     error: str | None = None
+    terminal: bool = False
 
 
 def build_batch_request(
@@ -59,7 +65,16 @@ def build_batch_request(
     json_mode: bool = False,
     json_schema: Mapping[str, Any] | None = None,
 ) -> BatchRequest:
-    if spec.provider == "gemini":
+    if spec.provider == "openai":
+        payload = _build_openai_payload(
+            spec,
+            system_prompt,
+            messages,
+            max_output_tokens,
+            json_mode,
+            json_schema,
+        )
+    elif spec.provider == "gemini":
         payload = _build_gemini_payload(
             spec,
             system_prompt,
@@ -90,7 +105,52 @@ def submit_batch(
     if not requests:
         raise ValueError("Cannot submit an empty batch")
     api_key = _api_key(spec)
-    if spec.provider == "gemini":
+    if spec.provider == "openai":
+        if len(requests) > 50_000:
+            raise ProviderError("OpenAI batch exceeds the 50,000 request limit")
+        rows: List[Dict[str, Any]] = [
+            {
+                "custom_id": item.custom_id,
+                "method": "POST",
+                "url": "/v1/responses",
+                "body": dict(item.payload),
+            }
+            for item in requests
+        ]
+        models = {str(row["body"].get("model", "")) for row in rows}
+        if models != {spec.model}:
+            raise ProviderError("OpenAI batch input must contain exactly one configured model")
+        input_bytes = "".join(
+            json.dumps(row, ensure_ascii=False) + "\n" for row in rows
+        ).encode("utf-8")
+        if len(input_bytes) >= 200_000_000:
+            raise ProviderError("OpenAI batch input exceeds the 200 MB file limit")
+        uploaded = _post_multipart_file(
+            "https://api.openai.com/v1/files",
+            input_bytes,
+            filename=f"{display_name}.jsonl",
+            fields={"purpose": "batch"},
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        input_file_id = str(uploaded.get("id", ""))
+        if uploaded.get("error") or not input_file_id:
+            raise ProviderError(
+                f"OpenAI batch input upload failed: {_safe_error(uploaded.get('error', uploaded))}"
+            )
+        response = _post_json(
+            "https://api.openai.com/v1/batches",
+            {
+                "input_file_id": input_file_id,
+                "endpoint": "/v1/responses",
+                "completion_window": "24h",
+                "metadata": {"description": display_name},
+            },
+            {"Authorization": f"Bearer {api_key}"},
+            attempts=1,
+        )
+        batch_id = str(response.get("id", ""))
+        response = {**response, "input_file": uploaded}
+    elif spec.provider == "gemini":
         payload = {
             "batch": {
                 "display_name": display_name,
@@ -157,7 +217,10 @@ def wait_for_batch(
 
 def retrieve_batch(spec: ModelSpec, batch_id: str) -> Dict[str, Any]:
     api_key = _api_key(spec)
-    if spec.provider == "gemini":
+    if spec.provider == "openai":
+        url = f"https://api.openai.com/v1/batches/{batch_id}"
+        headers = {"Authorization": f"Bearer {api_key}"}
+    elif spec.provider == "gemini":
         url = f"https://generativelanguage.googleapis.com/v1beta/{batch_id}"
         headers = {"x-goog-api-key": api_key}
     elif spec.provider == "anthropic":
@@ -172,6 +235,8 @@ def retrieve_batch(spec: ModelSpec, batch_id: str) -> Dict[str, Any]:
 
 
 def batch_state(spec: ModelSpec, status: Mapping[str, Any]) -> str:
+    if spec.provider == "openai":
+        return str(status.get("status", "unknown"))
     if spec.provider == "gemini":
         metadata = status.get("metadata") or {}
         return str(status.get("state") or metadata.get("state") or "UNKNOWN")
@@ -179,6 +244,8 @@ def batch_state(spec: ModelSpec, status: Mapping[str, Any]) -> str:
 
 
 def batch_is_terminal(spec: ModelSpec, status: Mapping[str, Any]) -> bool:
+    if spec.provider == "openai":
+        return batch_state(spec, status) in OPENAI_TERMINAL_STATES
     if spec.provider == "gemini":
         return batch_state(spec, status) in GEMINI_TERMINAL_STATES
     return batch_state(spec, status) == "ended"
@@ -190,7 +257,63 @@ def read_batch_results(
     status: Mapping[str, Any],
     requests: Sequence[BatchRequest],
 ) -> List[BatchItemResult]:
+    if spec.provider == "openai":
+        rows: List[Dict[str, Any]] = []
+        for file_id_key in ("output_file_id", "error_file_id"):
+            file_id = status.get(file_id_key)
+            if file_id:
+                rows.extend(
+                    _get_jsonl(
+                        f"https://api.openai.com/v1/files/{file_id}/content",
+                        {"Authorization": f"Bearer {_api_key(spec)}"},
+                    )
+                )
+        row_by_id = {str(row.get("custom_id", "")): row for row in rows}
+        openai_results: List[BatchItemResult] = []
+        for request in requests:
+            row = row_by_id.get(request.custom_id)
+            if row is None:
+                openai_results.append(
+                    BatchItemResult(
+                        request.custom_id,
+                        None,
+                        f"OpenAI batch result missing in state {batch_state(spec, status)}",
+                    )
+                )
+                continue
+            response = row.get("response") or {}
+            body = response.get("body") if isinstance(response, Mapping) else None
+            status_code = int(response.get("status_code", 0)) if isinstance(response, Mapping) else 0
+            if 200 <= status_code < 300 and isinstance(body, Mapping):
+                try:
+                    generation = _parse_openai_response(
+                        spec,
+                        body,
+                        billing_mode="batch",
+                        requested_max_output_tokens=int(
+                            request.payload.get("max_output_tokens", 0)
+                        ),
+                    )
+                except GenerationOutcomeError as exc:
+                    openai_results.append(
+                        BatchItemResult(request.custom_id, exc.result, str(exc), terminal=True)
+                    )
+                except ProviderError as exc:
+                    openai_results.append(BatchItemResult(request.custom_id, None, str(exc)))
+                else:
+                    openai_results.append(BatchItemResult(request.custom_id, generation))
+            else:
+                openai_results.append(
+                    BatchItemResult(
+                        request.custom_id,
+                        None,
+                        _safe_error(row.get("error") or body or response or row),
+                    )
+                )
+        return openai_results
+
     if spec.provider == "gemini":
+        request_by_id = {request.custom_id: request for request in requests}
         state = batch_state(spec, status)
         if state not in {"JOB_STATE_SUCCEEDED", "BATCH_STATE_SUCCEEDED"}:
             error = _safe_error(status.get("error", state))
@@ -202,7 +325,7 @@ def read_batch_results(
             inline = inline.get("inlinedResponses")
         if not isinstance(inline, list):
             raise ProviderError("Gemini batch did not contain inline responses")
-        results: List[BatchItemResult] = []
+        gemini_results: List[BatchItemResult] = []
         for index, item in enumerate(inline):
             metadata = item.get("metadata") or {}
             custom_id = str(
@@ -218,18 +341,30 @@ def read_batch_results(
                         spec,
                         response,
                         billing_mode="batch",
+                        requested_max_output_tokens=int(
+                            (
+                                request_by_id.get(custom_id, BatchRequest("", {})).payload.get(
+                                    "generationConfig", {}
+                                )
+                            ).get("maxOutputTokens", 0)
+                        ),
+                    )
+                except GenerationOutcomeError as exc:
+                    gemini_results.append(
+                        BatchItemResult(custom_id, exc.result, str(exc), terminal=True)
                     )
                 except ProviderError as exc:
-                    results.append(BatchItemResult(custom_id, None, str(exc)))
+                    gemini_results.append(BatchItemResult(custom_id, None, str(exc)))
                 else:
-                    results.append(BatchItemResult(custom_id, generation))
+                    gemini_results.append(BatchItemResult(custom_id, generation))
             else:
-                results.append(
+                gemini_results.append(
                     BatchItemResult(custom_id, None, _safe_error(item.get("error", item)))
                 )
-        return results
+        return gemini_results
 
     if spec.provider == "anthropic":
+        request_by_id = {request.custom_id: request for request in requests}
         rows = _get_jsonl(
             f"https://api.anthropic.com/v1/messages/batches/{batch_id}/results",
             {
@@ -237,7 +372,7 @@ def read_batch_results(
                 "anthropic-version": "2023-06-01",
             },
         )
-        results = []
+        anthropic_results: List[BatchItemResult] = []
         for row in rows:
             custom_id = str(row.get("custom_id", ""))
             result = row.get("result") or {}
@@ -247,16 +382,25 @@ def read_batch_results(
                         spec,
                         result["message"],
                         billing_mode="batch",
+                        requested_max_output_tokens=int(
+                            request_by_id.get(custom_id, BatchRequest("", {})).payload.get(
+                                "max_tokens", 0
+                            )
+                        ),
+                    )
+                except GenerationOutcomeError as exc:
+                    anthropic_results.append(
+                        BatchItemResult(custom_id, exc.result, str(exc), terminal=True)
                     )
                 except ProviderError as exc:
-                    results.append(BatchItemResult(custom_id, None, str(exc)))
+                    anthropic_results.append(BatchItemResult(custom_id, None, str(exc)))
                 else:
-                    results.append(BatchItemResult(custom_id, generation))
+                    anthropic_results.append(BatchItemResult(custom_id, generation))
             else:
-                results.append(
+                anthropic_results.append(
                     BatchItemResult(custom_id, None, _safe_error(result.get("error", result)))
                 )
-        return results
+        return anthropic_results
 
     raise ProviderError(f"Provider does not support batch execution: {spec.provider}")
 
@@ -266,6 +410,64 @@ def _api_key(spec: ModelSpec) -> str:
     if not api_key:
         raise ProviderError(f"Required environment variable is not set: {spec.api_key_env}")
     return api_key
+
+
+def _post_multipart_file(
+    url: str,
+    content: bytes,
+    *,
+    filename: str,
+    fields: Mapping[str, str],
+    headers: Mapping[str, str],
+) -> Dict[str, Any]:
+    boundary = f"japanese-rp-bench-{uuid.uuid4().hex}"
+    chunks: List[bytes] = []
+    for name, value in fields.items():
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("ascii"),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii"),
+                value.encode("utf-8"),
+                b"\r\n",
+            ]
+        )
+    chunks.extend(
+        [
+            f"--{boundary}\r\n".encode("ascii"),
+            (
+                f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            ).encode("utf-8"),
+            b"Content-Type: application/jsonl\r\n\r\n",
+            content,
+            b"\r\n",
+            f"--{boundary}--\r\n".encode("ascii"),
+        ]
+    )
+    request = urllib.request.Request(
+        url,
+        data=b"".join(chunks),
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "User-Agent": "Japanese-RP-Bench-v2/0.1",
+            **headers,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=240) as response:
+            value = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 429:
+            raise RateLimitError(f"Provider HTTP 429: {_safe_error_body(body)}") from exc
+        raise ProviderError(f"Provider HTTP {exc.code}: {_safe_error_body(body)}") from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise ProviderError(f"Provider request failed: {type(exc).__name__}") from exc
+    except json.JSONDecodeError as exc:
+        raise ProviderError("Provider response was not valid JSON") from exc
+    if not isinstance(value, dict):
+        raise ProviderError("Provider response JSON root is not an object")
+    return value
 
 
 def _get_json(

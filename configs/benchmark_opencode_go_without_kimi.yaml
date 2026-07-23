@@ -19,11 +19,8 @@ evaluation:
     weighted_overall_score: false
     major_violation_gate: true
   judge_max_output_tokens: 4096
-  # Claude structured output may use a longer internal JSON representation for
-  # ten-turn Base evaluations. This is only consumed for uncached judgments.
   base_judge_max_output_tokens: 8192
 batch:
-  # OpenAI user/Judge and Gemini/Anthropic judges use asynchronous Batch APIs.
   poll_interval_seconds: 30
   max_attempts: 2
 pilot:
@@ -43,14 +40,6 @@ models:
     input_price_per_million: 0.75
     output_price_per_million: 4.5
   targets:
-    - id: opencode-go-kimi-k3
-      provider: opencode_go
-      api_style: openai_chat
-      model: kimi-k3
-      api_key_env: OPENCODE_GO_API_KEY
-      reasoning: none
-      input_price_per_million: 3.0
-      output_price_per_million: 15.0
     - id: opencode-go-glm-5.2
       provider: opencode_go
       api_style: openai_chat
@@ -72,7 +61,6 @@ models:
       api_style: openai_chat
       model: deepseek-v4-pro
       api_key_env: OPENCODE_GO_API_KEY
-      # `none` is rejected by this endpoint; `low` is the smallest accepted effort.
       reasoning: low
       input_price_per_million: 0.435
       output_price_per_million: 0.87
@@ -118,10 +106,6 @@ models:
       output_price_per_million: 5.0
       batch: true
 notes:
-  - OpenCode Goは評価対象にだけ使用する
-  - JudgeはOpenAI、Google、Anthropicの3モデルを維持する
-  - OpenAI、Gemini、AnthropicのJudgeはBatch APIを使用し、失敗項目だけ最大1回再投入する
-  - 全対象会話を生成・保存してからJudge評価を開始する
-  - OpenCode Go対象はKimi・GLM・MiMoでreasoning_effort=none、DeepSeekでlow、Qwen・MiniMaxでthinking=disabledを明示する
-  - Baseユーザー役は比較可能性のためGPT-5.4 miniへ固定する
-  - 中国主要6系列の汎用上位モデルを比較する候補構成。実行前に対象を確定する
+  - Kimi K3のprovider rate limit中に残り5モデルを先行完了する運用shard
+  - 各対象のtoken上限、Reasoning、ユーザー役、3 Judge、Batch条件は正式プロトコルと同一
+  - Kimi K3を同条件の独立shardで補完するまで11モデル正式比較として公開しない

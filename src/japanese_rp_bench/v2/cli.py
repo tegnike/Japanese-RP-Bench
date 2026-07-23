@@ -12,7 +12,7 @@ from japanese_rp_bench.v2.judge import build_judge_request
 from japanese_rp_bench.v2.legacy import build_legacy_snapshot, legacy_snapshot_markdown
 from japanese_rp_bench.v2.providers import ProviderError
 from japanese_rp_bench.v2.rolepacks import load_role_pack
-from japanese_rp_bench.v2.runner import run_benchmark
+from japanese_rp_bench.v2.runner import run_benchmark, run_generation_pilot
 from japanese_rp_bench.v2.scoring import resolve_conversation, score_conversation
 from japanese_rp_bench.v2.schemas import Conversation, JudgeEvaluation, SchemaError
 
@@ -49,6 +49,15 @@ def main() -> None:
     run_parser.add_argument("--config", required=True)
     run_parser.add_argument("--output", required=True)
     run_parser.add_argument("--workers", type=int, default=4)
+    run_parser.add_argument("--pilot-report")
+
+    pilot_parser = subparsers.add_parser(
+        "pilot",
+        help="Run the configured truncation, Batch, provenance, and Judge gate",
+    )
+    pilot_parser.add_argument("--config", required=True)
+    pilot_parser.add_argument("--output", required=True)
+    pilot_parser.add_argument("--workers", type=int, default=4)
 
     legacy_parser = subparsers.add_parser(
         "legacy-snapshot",
@@ -74,8 +83,17 @@ def main() -> None:
             )
         elif args.command == "run":
             logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-            leaderboard = run_benchmark(args.config, args.output, workers=args.workers)
+            leaderboard = run_benchmark(
+                args.config,
+                args.output,
+                workers=args.workers,
+                pilot_report_path=args.pilot_report,
+            )
             print(json.dumps(leaderboard, ensure_ascii=False, indent=2))
+        elif args.command == "pilot":
+            logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+            report = run_generation_pilot(args.config, args.output, workers=args.workers)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
         elif args.command == "legacy-snapshot":
             snapshot = build_legacy_snapshot(args.evaluations)
             _write_json(args.output, snapshot)

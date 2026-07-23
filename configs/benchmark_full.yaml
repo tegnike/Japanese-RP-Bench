@@ -19,9 +19,16 @@ evaluation:
     weighted_overall_score: false
     major_violation_gate: true
   judge_max_output_tokens: 4096
-  base_judge_max_output_tokens: 6144
+  base_judge_max_output_tokens: 8192
+batch:
+  poll_interval_seconds: 30
+  max_attempts: 2
+pilot:
+  base_case_ids: [0]
+  scenario_ids: [tea_room_twelve_turns]
 generation:
-  max_output_tokens: 384
+  target_max_output_tokens: 4096
+  user_max_output_tokens: 2048
 models:
   user_simulator:
     id: user-gpt-5.4-mini-2026-03-17
@@ -29,6 +36,7 @@ models:
     model: gpt-5.4-mini-2026-03-17
     api_key_env: OPENAI_API_KEY
     reasoning: none
+    batch: true
     input_price_per_million: 0.75
     output_price_per_million: 4.5
   targets:
@@ -37,6 +45,7 @@ models:
       model: gpt-5.6-sol
       api_key_env: OPENAI_API_KEY
       reasoning: none
+      batch: true
       input_price_per_million: 5.0
       output_price_per_million: 30.0
     - id: gpt-5.4-mini-2026-03-17
@@ -44,6 +53,7 @@ models:
       model: gpt-5.4-mini-2026-03-17
       api_key_env: OPENAI_API_KEY
       reasoning: none
+      batch: true
       input_price_per_million: 0.75
       output_price_per_million: 4.5
     - id: gemini-3.5-flash
@@ -51,20 +61,23 @@ models:
       model: gemini-3.5-flash
       api_key_env: GEMINI_API_KEY
       reasoning: minimal
+      batch: true
       input_price_per_million: 1.5
       output_price_per_million: 9.0
-    - id: gemini-3.1-flash-lite
+    - id: gemini-3.5-flash-lite
       provider: gemini
-      model: gemini-3.1-flash-lite
+      model: gemini-3.5-flash-lite
       api_key_env: GEMINI_API_KEY
       reasoning: minimal
-      input_price_per_million: 0.25
-      output_price_per_million: 1.5
+      batch: true
+      input_price_per_million: 0.3
+      output_price_per_million: 2.5
     - id: claude-haiku-4.5-20251001
       provider: anthropic
       model: claude-haiku-4-5-20251001
       api_key_env: ANTHROPIC_API_KEY
       reasoning: none
+      batch: true
       input_price_per_million: 1.0
       output_price_per_million: 5.0
   judges:
@@ -73,6 +86,7 @@ models:
       model: gpt-5.4-mini-2026-03-17
       api_key_env: OPENAI_API_KEY
       reasoning: low
+      batch: true
       input_price_per_million: 0.75
       output_price_per_million: 4.5
     - id: judge-gemini-3.5-flash
@@ -80,6 +94,7 @@ models:
       model: gemini-3.5-flash
       api_key_env: GEMINI_API_KEY
       reasoning: low
+      batch: true
       input_price_per_million: 1.5
       output_price_per_million: 9.0
     - id: judge-claude-haiku-4.5-20251001
@@ -87,6 +102,7 @@ models:
       model: claude-haiku-4-5-20251001
       api_key_env: ANTHROPIC_API_KEY
       reasoning: low
+      batch: true
       input_price_per_million: 1.0
       output_price_per_million: 5.0
 notes:

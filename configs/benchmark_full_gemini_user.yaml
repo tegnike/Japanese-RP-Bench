@@ -19,9 +19,10 @@ evaluation:
     weighted_overall_score: false
     major_violation_gate: true
   judge_max_output_tokens: 4096
-  base_judge_max_output_tokens: 6144
+  base_judge_max_output_tokens: 8192
 generation:
-  max_output_tokens: 384
+  target_max_output_tokens: 4096
+  user_max_output_tokens: 2048
 models:
   user_simulator:
     id: user-gemini-3.5-flash

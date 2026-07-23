@@ -22,6 +22,27 @@
 [`docs/metrics.md`](docs/metrics.md)、ベンチマーク全体の設計は
 [`docs/benchmark-v2.md`](docs/benchmark-v2.md)を参照してください。
 
+11モデル正式計測で固定したtoken上限、Reasoning、Batch wave、失敗時の扱い、
+pilot合格条件、予算、一次資料は
+[`docs/benchmark-v2-production-protocol.md`](docs/benchmark-v2-production-protocol.md)へ集約しています。
+2026-07-23時点の実行結果、失敗理由、費用、決定事項、再開条件は
+[`docs/benchmark-v2-production-status-2026-07-23.md`](docs/benchmark-v2-production-status-2026-07-23.md)
+に記録しています。
+
+## 正式再評価の現在地
+
+384 token問題を修正した正式プロトコルで再評価を開始し、11モデル中6モデルが36/36シナリオを
+完了しました。残る5モデルはprovider終端、Judge schema違反、OpenCode Go 429のため未完了です。
+不完全モデルを0点や最下位にせず、全11モデルが揃うまで現行スコアの部分ランキングは公開しません。
+
+| 状態 | モデル |
+|---|---|
+| 36/36完了 | GPT-5.4 mini、Gemini 3.5 Flash、Claude Haiku 4.5、GLM-5.2、Qwen3.7 Max、MiMo V2.5 Pro |
+| 未完了 | GPT-5.6 Sol、Gemini 3.5 Flash-Lite、DeepSeek V4 Pro、MiniMax M3、Kimi K3 |
+
+再評価は2026-07-23時点で一時停止しています。次回は予算上限、fresh rerun、Gemini再置換を
+確認したうえで再開します。
+
 ## 現在の評価プロトコル
 
 - Base: 元のSFWデータセット30設定 × 10往復 × 従来8指標
@@ -36,7 +57,11 @@
 Challengeでは、人格置換、引用文中の命令、存在しない共有記憶、ユーザー代理行動、
 12ターンの設定維持、AIニケちゃん固有の関係性維持などを測定します。
 
-## 最新結果
+## 旧計測結果（全11モデル完了後に置換予定）
+
+> 以下は384 token条件で取得した監査対象の旧結果です。途中打ち切りの影響が判明したため、
+> 一般的なモデル能力ランキングとしては採用しません。上記の正式計測プロトコルで全11モデルを
+> 完了した後、表と結果資料をまとめて置き換えます。
 
 同じGPT-5.4 miniユーザー役と同じ3 Judgeで評価した11モデルの比較です。
 一つの総合順位へ潰すとモデルごとの長所と弱点が隠れるため、Base会話品質とv2追従性を
@@ -136,9 +161,15 @@ export OPENAI_API_KEY=...
 export GEMINI_API_KEY=...
 export ANTHROPIC_API_KEY=...
 
+japanese-rp-bench-v2 pilot \
+  --config configs/benchmark_full.yaml \
+  --output tmp/pilot-full \
+  --workers 4
+
 japanese-rp-bench-v2 run \
   --config configs/benchmark_full.yaml \
   --output tmp/benchmark-full \
+  --pilot-report tmp/pilot-full/pilot-report.json \
   --workers 4
 ```
 
@@ -147,13 +178,23 @@ OpenCode Go対象を実行する場合は`OPENCODE_GO_API_KEY`も設定します
 ```bash
 export OPENCODE_GO_API_KEY=...
 
+japanese-rp-bench-v2 pilot \
+  --config configs/benchmark_opencode_go_candidates.yaml \
+  --output tmp/pilot-opencode-go \
+  --workers 2
+
 japanese-rp-bench-v2 run \
   --config configs/benchmark_opencode_go_candidates.yaml \
   --output tmp/benchmark-opencode-go \
+  --pilot-report tmp/pilot-opencode-go/pilot-report.json \
   --workers 2
 ```
 
-途中で停止しても、同じ設定と出力先で再実行すれば保存済みの会話・評価を再利用します。
+対象は4,096 token、動的ユーザー役は2,048 token、Challenge Judgeは4,096 token、
+Base Judgeは8,192 tokenへ分離しています。OpenAI、Gemini、Anthropicは会話生成とJudgeを
+Batch APIで実行し、ターン依存の会話はwave単位で保存します。途中で停止しても、同じ設定と
+出力先で再実行すれば、送信済みBatchと保存済みの会話・評価を追跡して再開します。
+必要な資格情報は最初の送信前に一括検査し、1つでも不足していればリクエストを送信しません。
 OpenCode Goの接続方法と有料Judgeの呼び出し制御は
 [`docs/opencode-go.md`](docs/opencode-go.md)を参照してください。
 

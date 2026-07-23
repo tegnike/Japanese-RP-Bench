@@ -15,7 +15,8 @@ evaluation:
     major_violation_gate: true
   judge_max_output_tokens: 4096
 generation:
-  max_output_tokens: 384
+  target_max_output_tokens: 4096
+  user_max_output_tokens: 2048
 models:
   targets:
     - id: gpt-5.6-sol
