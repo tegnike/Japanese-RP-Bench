@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from unittest.mock import patch
 from pathlib import Path
+from threading import Lock
+from unittest.mock import patch
 
 from japanese_rp_bench.v2.batch import (
     BatchItemResult,
@@ -16,6 +17,7 @@ from japanese_rp_bench.v2.batch import (
 from japanese_rp_bench.v2.cli import _prepare_judging, _score
 from japanese_rp_bench.v2.base import (
     LEGACY_DIMENSIONS,
+    build_base_judge_request,
     build_base_role_pack,
     parse_base_judge_response,
     score_base_conversation,
@@ -37,11 +39,15 @@ from japanese_rp_bench.v2.rules import evaluate_deterministic_rules
 from japanese_rp_bench.v2.scoring import score_conversation
 from japanese_rp_bench.v2.schemas import Conversation, JudgeEvaluation, SchemaError, Verdict
 from japanese_rp_bench.v2.runner import (
+    _GenerationTask,
+    _base_judge_json_schema,
     _build_run_fingerprint,
     _conversation_fingerprint,
+    _execute_synchronous_generation_tasks,
     _generate_base_judgments,
     _generate_conversation,
     _is_complete_judge_artifact,
+    _judge_json_schema,
     _json_sha256,
     _prepare_run_manifest,
     _run_generation_waves,
@@ -168,12 +174,148 @@ class JudgeContractTests(unittest.TestCase):
         with self.assertRaises(SchemaError):
             parse_judge_response(incomplete, "judge-a", 1, self.role)
 
-    def test_parser_rejects_duplicate_rule_findings(self) -> None:
+    def test_parser_collapses_same_verdict_duplicate_rule_findings(self) -> None:
         payload = judge_evaluations(self.role)[0].to_dict()
-        payload["findings"].append(dict(payload["findings"][0]))
-        with self.assertRaisesRegex(SchemaError, "duplicates"):
-            parse_judge_response(json.dumps(payload), "judge-a", 1, self.role)
+        duplicate = dict(payload["findings"][0])
+        duplicate["confidence"] = 0.4
+        duplicate["evidence"] = "second compatible excerpt"
+        payload["findings"].append(duplicate)
         self.assertFalse(_is_complete_judge_artifact(payload, self.role))
+        evaluation = parse_judge_response(json.dumps(payload), "judge-a", 1, self.role)
+        self.assertEqual(len(evaluation.findings), len(self.role.judge_rules))
+        self.assertEqual(evaluation.findings[0].confidence, 0.4)
+        self.assertIn("second compatible excerpt", evaluation.findings[0].evidence)
+        self.assertIn("pipeline_normalization=", evaluation.notes)
+        self.assertTrue(_is_complete_judge_artifact(evaluation.to_dict(), self.role))
+
+    def test_parser_rejects_conflicting_duplicate_rule_findings(self) -> None:
+        payload = judge_evaluations(self.role)[0].to_dict()
+        duplicate = dict(payload["findings"][0])
+        duplicate["verdict"] = (
+            "pass" if duplicate["verdict"] != "pass" else "fail"
+        )
+        payload["findings"].append(duplicate)
+        with self.assertRaisesRegex(SchemaError, "conflicting duplicate verdicts"):
+            parse_judge_response(json.dumps(payload), "judge-a", 1, self.role)
+
+    def test_anthropic_schema_uses_fixed_rule_keys(self) -> None:
+        schema = _judge_json_schema(self.role, fixed_rule_keys=True)
+        findings = schema["properties"]["findings"]
+        self.assertEqual(findings["type"], "object")
+        self.assertEqual(set(findings["required"]), {rule.id for rule in self.role.judge_rules})
+        self.assertFalse(findings["additionalProperties"])
+        request = build_judge_request(
+            self.role,
+            self.scenario,
+            self.conversation,
+            turn=1,
+            keyed_findings=True,
+        )
+        response_schema = request.user_prompt.split("RESPONSE_SCHEMA\n", 1)[1]
+        self.assertIn(f'"{self.role.judge_rules[0].id}": {{', response_schema)
+
+
+class SynchronousRateLimitTests(unittest.TestCase):
+    def tasks(self, directory: str, count: int = 4) -> list[_GenerationTask]:
+        pack = load_role_pack(ROOT / "role_packs/custom/nikechan")
+        role = pack.roles["nikechan"]
+        scenario = pack.scenarios["nikechan_baseline"]
+        target = ModelSpec("target", "opencode_go", "kimi-k3", "KEY", "none", 0, 0)
+        return [
+            _GenerationTask(
+                key=f"task-{index}",
+                conversation_path=Path(directory) / f"{index}.json",
+                role=role,
+                scenario=scenario,
+                target_spec=target,
+                spec=target,
+                purpose="target",
+                turn=1,
+                system_prompt=f"task-{index}",
+                messages=(),
+                max_output_tokens=4096,
+                run_fingerprint="fixture",
+            )
+            for index in range(count)
+        ]
+
+    def test_429_retries_only_failed_tasks_at_lower_concurrency(self) -> None:
+        attempts: dict[str, int] = {}
+        applied: list[str] = []
+        lock = Lock()
+
+        def generate(spec, system_prompt, messages, max_output_tokens):
+            with lock:
+                attempts[system_prompt] = attempts.get(system_prompt, 0) + 1
+                attempt = attempts[system_prompt]
+            if system_prompt in {"task-0", "task-1"} and attempt == 1:
+                raise RateLimitError(f"429 {system_prompt}")
+            return GenerationResult(
+                system_prompt,
+                spec.model,
+                spec.model,
+                spec.provider,
+                f"response-{system_prompt}",
+                1,
+                1,
+            )
+
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "japanese_rp_bench.v2.runner.generate_text",
+            side_effect=generate,
+        ), patch(
+            "japanese_rp_bench.v2.runner._apply_generation_result",
+            side_effect=lambda task, result: applied.append(task.key),
+        ), patch("japanese_rp_bench.v2.runner.time.sleep"):
+            _execute_synchronous_generation_tasks(
+                Path(directory),
+                self.tasks(directory),
+                workers=4,
+                max_attempts=3,
+                backoff_seconds=0,
+            )
+            events = [
+                json.loads(line)
+                for line in (Path(directory) / "rate-limit-events.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(attempts, {"task-0": 2, "task-1": 2, "task-2": 1, "task-3": 1})
+        self.assertCountEqual(applied, ["task-0", "task-1", "task-2", "task-3"])
+        self.assertEqual(events[0]["workers_before"], 4)
+        self.assertEqual(events[0]["workers_after"], 2)
+        self.assertEqual(events[0]["rate_limited_tasks"], ["task-0", "task-1"])
+        self.assertEqual(events[0]["outcome"], "retrying")
+
+    def test_persistent_429_reaches_single_worker_and_stops(self) -> None:
+        def generate(*args, **kwargs):
+            raise RateLimitError("429 persistent")
+
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "japanese_rp_bench.v2.runner.generate_text",
+            side_effect=generate,
+        ), patch("japanese_rp_bench.v2.runner.time.sleep"):
+            with self.assertRaisesRegex(RateLimitError, "after 3 attempts"):
+                _execute_synchronous_generation_tasks(
+                    Path(directory),
+                    self.tasks(directory),
+                    workers=4,
+                    max_attempts=3,
+                    backoff_seconds=0,
+                )
+            events = [
+                json.loads(line)
+                for line in (Path(directory) / "rate-limit-events.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(
+            [(event["workers_before"], event["workers_after"]) for event in events],
+            [(4, 2), (2, 1), (1, 1)],
+        )
+        self.assertEqual(events[-1]["outcome"], "exhausted")
 
 
 class ScoringTests(unittest.TestCase):
@@ -1385,6 +1527,81 @@ class BaseTrackTests(unittest.TestCase):
         judgment = parse_base_judge_response(raw, "judge-claude", role, 2)
         self.assertEqual([item["turn"] for item in judgment["turn_fidelity"]], [1, 2])
         self.assertEqual(judgment["legacy_scores"]["Consistency"], 4)
+
+    def test_base_judge_collapses_compatible_duplicate_rule_findings(self) -> None:
+        pack = build_base_role_pack(self.cases(), turns=2)
+        role = pack.roles["legacy_role_00"]
+        findings = [
+            {
+                "rule_id": rule.id,
+                "verdict": "pass",
+                "confidence": 0.9,
+                "evidence": "fixture",
+                "rationale": "fixture",
+            }
+            for rule in role.rules
+        ]
+        duplicate = dict(findings[0])
+        duplicate["confidence"] = 0.5
+        duplicate["evidence"] = "second compatible excerpt"
+        findings.append(duplicate)
+        payload = {
+            "evaluation_reason": "fixture",
+            "legacy_scores": {dimension: 4 for dimension in LEGACY_DIMENSIONS},
+            "rule_findings": findings,
+            "turn_fidelity": [
+                {"turn": 1, "score": 5, "failed_rule_ids": []},
+                {"turn": 2, "score": 4, "failed_rule_ids": []},
+            ],
+        }
+        judgment = parse_base_judge_response(json.dumps(payload), "judge-claude", role, 2)
+        self.assertEqual(len(judgment["rule_findings"]), len(role.rules))
+        self.assertEqual(judgment["rule_findings"][0]["confidence"], 0.5)
+        self.assertEqual(
+            judgment["normalizations"][0]["type"],
+            "collapsed_same_verdict_duplicate_rule_ids",
+        )
+
+        conflicting = dict(duplicate)
+        conflicting["verdict"] = "fail"
+        payload["rule_findings"][-1] = conflicting
+        with self.assertRaisesRegex(SchemaError, "conflicting duplicate verdicts"):
+            parse_base_judge_response(json.dumps(payload), "judge-claude", role, 2)
+
+    def test_anthropic_base_schema_uses_fixed_rule_and_turn_keys(self) -> None:
+        pack = build_base_role_pack(self.cases(), turns=2)
+        role = pack.roles["legacy_role_00"]
+        schema = _base_judge_json_schema(
+            role,
+            2,
+            fixed_turn_keys=True,
+            fixed_rule_keys=True,
+        )
+        rule_findings = schema["properties"]["rule_findings"]
+        turn_fidelity = schema["properties"]["turn_fidelity"]
+        self.assertEqual(rule_findings["type"], "object")
+        self.assertEqual(set(rule_findings["required"]), {rule.id for rule in role.rules})
+        self.assertEqual(turn_fidelity["type"], "object")
+        self.assertEqual(turn_fidelity["required"], ["1", "2"])
+        request = build_base_judge_request(
+            role,
+            pack.scenarios["legacy_case_00"],
+            Conversation.from_dict(
+                {
+                    "role_id": role.id,
+                    "scenario_id": "legacy_case_00",
+                    "target_model": "fixture",
+                    "turns": [
+                        {"user": "出発しても大丈夫？", "assistant": "慎重に進もう。"},
+                        {"user": "急ぎたいな", "assistant": "安全な道を選ぼう。"},
+                    ],
+                }
+            ),
+            "fixture rubric",
+            keyed_findings=True,
+        )
+        response_schema = request.user_prompt.split("RESPONSE_SCHEMA\n", 1)[1]
+        self.assertIn(f'"{role.rules[0].id}": {{', response_schema)
 
     def test_simulated_base_conversation_generates_user_and_target_turns(self) -> None:
         pack = build_base_role_pack(self.cases(), turns=2)

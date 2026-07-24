@@ -17,6 +17,8 @@ evaluation:
 generation:
   target_max_output_tokens: 4096
   user_max_output_tokens: 2048
+  sync_rate_limit_max_attempts: 3
+  sync_rate_limit_backoff_seconds: 30
 models:
   targets:
     - id: gpt-5.6-sol

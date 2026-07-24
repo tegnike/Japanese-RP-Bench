@@ -308,6 +308,72 @@ class JudgeEvaluation:
         )
 
 
+def normalize_rule_findings(
+    value: Any,
+    context: str,
+) -> Tuple[List[Dict[str, Any]], Tuple[str, ...]]:
+    """Normalize keyed findings and merge non-conflicting duplicate rule IDs.
+
+    Some structured-output providers can satisfy an array's item count while
+    repeating one rule ID. A repeated finding is safe to collapse only when
+    every copy has the same verdict. Evidence and rationale are retained,
+    confidence is merged conservatively with the minimum value, and conflicting
+    verdicts remain a schema error.
+    """
+
+    if isinstance(value, Mapping):
+        keyed_findings: List[Dict[str, Any]] = []
+        for rule_id, item in value.items():
+            if not isinstance(item, Mapping):
+                raise SchemaError(f"{context} keyed findings must contain objects")
+            finding = dict(item)
+            finding["rule_id"] = str(rule_id)
+            keyed_findings.append(finding)
+        value = keyed_findings
+    if not isinstance(value, list):
+        raise SchemaError(f"{context} must be a list or keyed object")
+
+    normalized: List[Dict[str, Any]] = []
+    positions: Dict[str, int] = {}
+    duplicate_ids: List[str] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise SchemaError(f"{context} must contain objects")
+        finding = dict(item)
+        if "rule_id" not in finding or "verdict" not in finding:
+            raise SchemaError(f"{context} finding must contain rule_id and verdict")
+        rule_id = str(finding["rule_id"])
+        finding["rule_id"] = rule_id
+        if rule_id not in positions:
+            positions[rule_id] = len(normalized)
+            normalized.append(finding)
+            continue
+
+        duplicate_ids.append(rule_id)
+        position = positions[rule_id]
+        existing = normalized[position]
+        if str(existing["verdict"]) != str(finding["verdict"]):
+            raise SchemaError(
+                f"{context} returned conflicting duplicate verdicts for rule id: {rule_id}"
+            )
+        existing["confidence"] = min(
+            float(existing.get("confidence", 1.0)),
+            float(finding.get("confidence", 1.0)),
+        )
+        for field in ("evidence", "rationale"):
+            values = [
+                text
+                for text in (
+                    str(existing.get(field, "")).strip(),
+                    str(finding.get(field, "")).strip(),
+                )
+                if text
+            ]
+            existing[field] = " | ".join(dict.fromkeys(values))
+
+    return normalized, tuple(dict.fromkeys(duplicate_ids))
+
+
 def _require_keys(data: Mapping[str, Any], keys: Iterable[str], context: str) -> None:
     missing = [key for key in keys if key not in data]
     if missing:

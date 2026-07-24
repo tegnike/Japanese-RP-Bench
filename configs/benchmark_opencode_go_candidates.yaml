@@ -32,6 +32,8 @@ pilot:
 generation:
   target_max_output_tokens: 4096
   user_max_output_tokens: 2048
+  sync_rate_limit_max_attempts: 3
+  sync_rate_limit_backoff_seconds: 30
 models:
   user_simulator:
     id: user-gpt-5.4-mini-2026-03-17

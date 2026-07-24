@@ -23,6 +23,8 @@ evaluation:
 generation:
   target_max_output_tokens: 4096
   user_max_output_tokens: 2048
+  sync_rate_limit_max_attempts: 3
+  sync_rate_limit_backoff_seconds: 30
 models:
   user_simulator:
     id: user-gemini-3.5-flash

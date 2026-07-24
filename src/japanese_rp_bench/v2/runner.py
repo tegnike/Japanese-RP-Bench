@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -501,6 +502,7 @@ def _run_generation_waves(
     workers: int,
 ) -> None:
     poll_interval, max_attempts = _batch_policy(config)
+    sync_rate_limit_attempts, sync_rate_limit_backoff = _sync_rate_limit_policy(config)
     all_specs = {spec.id: spec for _, _, spec in jobs}
     if user_spec is not None:
         all_specs[user_spec.id] = user_spec
@@ -528,6 +530,8 @@ def _run_generation_waves(
             max_attempts,
             run_fingerprint,
             workers,
+            sync_rate_limit_attempts,
+            sync_rate_limit_backoff,
         )
 
 
@@ -667,6 +671,8 @@ def _execute_generation_wave(
     max_attempts: int,
     run_fingerprint: str,
     workers: int,
+    sync_rate_limit_attempts: int,
+    sync_rate_limit_backoff: float,
 ) -> None:
     tasks_by_spec: Dict[str, List[_GenerationTask]] = {}
     for task in tasks:
@@ -704,28 +710,13 @@ def _execute_generation_wave(
 
     synchronous = [task for task in tasks if not task.spec.batch]
     if synchronous:
-        executor = ThreadPoolExecutor(max_workers=workers)
-        futures = {
-            executor.submit(
-                generate_text,
-                task.spec,
-                task.system_prompt,
-                task.messages,
-                task.max_output_tokens,
-            ): task
-            for task in synchronous
-        }
-        try:
-            for future in as_completed(futures):
-                task = futures[future]
-                try:
-                    result = future.result()
-                except GenerationOutcomeError as exc:
-                    _record_generation_attempt(task, exc.result, str(exc))
-                    raise
-                _apply_generation_result(task, result)
-        finally:
-            executor.shutdown(wait=True, cancel_futures=True)
+        _execute_synchronous_generation_tasks(
+            output_root,
+            synchronous,
+            workers,
+            sync_rate_limit_attempts,
+            sync_rate_limit_backoff,
+        )
 
     current_tasks = {task.key: task for task in tasks}
     for spec, state_path, state in batch_states:
@@ -799,6 +790,84 @@ def _execute_generation_wave(
                 "Batch generation returned a terminal outcome; the response was preserved "
                 f"and the run was stopped: {terminal_errors[0]}"
             )
+
+
+def _execute_synchronous_generation_tasks(
+    output_root: Path,
+    tasks: Sequence[_GenerationTask],
+    workers: int,
+    max_attempts: int,
+    backoff_seconds: float,
+) -> None:
+    """Retry only explicit 429 tasks while halving synchronous concurrency."""
+
+    pending = list(tasks)
+    current_workers = max(1, min(workers, len(pending)))
+    for attempt in range(1, max_attempts + 1):
+        rate_limited: List[_GenerationTask] = []
+        rate_limit_errors: List[str] = []
+        executor = ThreadPoolExecutor(max_workers=current_workers)
+        futures = {
+            executor.submit(
+                generate_text,
+                task.spec,
+                task.system_prompt,
+                task.messages,
+                task.max_output_tokens,
+            ): task
+            for task in pending
+        }
+        try:
+            for future in as_completed(futures):
+                task = futures[future]
+                try:
+                    result = future.result()
+                except RateLimitError as exc:
+                    rate_limited.append(task)
+                    rate_limit_errors.append(str(exc))
+                    continue
+                except GenerationOutcomeError as exc:
+                    _record_generation_attempt(task, exc.result, str(exc))
+                    raise
+                _apply_generation_result(task, result)
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
+        if not rate_limited:
+            return
+
+        next_workers = max(1, min(current_workers // 2, len(rate_limited)))
+        exhausted = attempt == max_attempts
+        _append_jsonl(
+            output_root / "rate-limit-events.jsonl",
+            {
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                "attempt": attempt,
+                "workers_before": current_workers,
+                "workers_after": next_workers,
+                "rate_limited_tasks": sorted(task.key for task in rate_limited),
+                "errors": sorted(set(rate_limit_errors)),
+                "outcome": "exhausted" if exhausted else "retrying",
+            },
+        )
+        if exhausted:
+            raise RateLimitError(
+                f"{len(rate_limited)} synchronous generation request(s) still rate-limited "
+                f"after {max_attempts} attempts at minimum concurrency {next_workers}"
+            )
+
+        delay = min(backoff_seconds * attempt, 60.0)
+        LOGGER.warning(
+            "synchronous generation rate-limited tasks=%s workers=%s->%s "
+            "retry_in_seconds=%s",
+            len(rate_limited),
+            current_workers,
+            next_workers,
+            delay,
+        )
+        if delay:
+            time.sleep(delay)
+        pending = sorted(rate_limited, key=lambda task: task.key)
+        current_workers = next_workers
 
 
 def _submit_generation_batch(
@@ -1469,7 +1538,13 @@ def _collect_batch_judge_tasks(
         if scenario.track == "legacy-base":
             if any(str(item.get("judge_id")) == judge_spec.id for item in artifacts):
                 continue
-            request = build_base_judge_request(role, scenario, conversation, legacy_rubric)
+            request = build_base_judge_request(
+                role,
+                scenario,
+                conversation,
+                legacy_rubric,
+                keyed_findings=judge_spec.provider == "anthropic",
+            )
             tasks.append(
                 _BatchJudgeTask(
                     key=_batch_task_key(target_spec.id, role_pack.id, scenario.id, judge_spec.id),
@@ -1488,6 +1563,7 @@ def _collect_batch_judge_tasks(
                         role,
                         len(conversation.turns),
                         fixed_turn_keys=judge_spec.provider == "anthropic",
+                        fixed_rule_keys=judge_spec.provider == "anthropic",
                     ),
                     run_fingerprint=run_fingerprint,
                     conversation_fingerprint=conversation_fingerprint,
@@ -1508,7 +1584,13 @@ def _collect_batch_judge_tasks(
         for turn in turns_to_judge:
             if (judge_spec.id, turn.index) in existing:
                 continue
-            judge_request = build_judge_request(role, scenario, conversation, turn.index)
+            judge_request = build_judge_request(
+                role,
+                scenario,
+                conversation,
+                turn.index,
+                keyed_findings=judge_spec.provider == "anthropic",
+            )
             tasks.append(
                 _BatchJudgeTask(
                     key=_batch_task_key(
@@ -1530,6 +1612,7 @@ def _collect_batch_judge_tasks(
                     json_schema=_judge_json_schema(
                         role,
                         string_scores=judge_spec.provider == "anthropic",
+                        fixed_rule_keys=judge_spec.provider == "anthropic",
                     ),
                     run_fingerprint=run_fingerprint,
                     conversation_fingerprint=conversation_fingerprint,
@@ -1885,7 +1968,6 @@ def _generate_base_judgments(
         conversation_fingerprint,
     )
     existing = {str(item["judge_id"]): item for item in artifacts}
-    request = build_base_judge_request(role, scenario, conversation, legacy_rubric)
     for judge_spec in judge_specs:
         if judge_spec.id in existing:
             continue
@@ -1896,6 +1978,13 @@ def _generate_base_judgments(
         call_attempts = []
         last_error: Exception | None = None
         attempts = 1 if judge_spec.provider in EXPENSIVE_JUDGE_PROVIDERS else 3
+        request = build_base_judge_request(
+            role,
+            scenario,
+            conversation,
+            legacy_rubric,
+            keyed_findings=judge_spec.provider == "anthropic",
+        )
         for _ in range(attempts):
             try:
                 result = generate_text(
@@ -1908,6 +1997,7 @@ def _generate_base_judgments(
                         role,
                         len(conversation.turns),
                         fixed_turn_keys=judge_spec.provider == "anthropic",
+                        fixed_rule_keys=judge_spec.provider == "anthropic",
                     ),
                 )
                 call = result.to_dict()
@@ -1984,7 +2074,6 @@ def _generate_judgments(
         if _is_complete_judge_artifact(item, role)
     }
     for turn in conversation.turns:
-        request = build_judge_request(role, scenario, conversation, turn.index)
         for judge_spec in judge_specs:
             key = (judge_spec.id, turn.index)
             if key in existing:
@@ -1997,6 +2086,13 @@ def _generate_judgments(
             call_attempts = []
             last_error: Exception | None = None
             attempts = 1 if judge_spec.provider in EXPENSIVE_JUDGE_PROVIDERS else 3
+            request = build_judge_request(
+                role,
+                scenario,
+                conversation,
+                turn.index,
+                keyed_findings=judge_spec.provider == "anthropic",
+            )
             for _ in range(attempts):
                 try:
                     result = generate_text(
@@ -2008,6 +2104,7 @@ def _generate_judgments(
                         json_schema=_judge_json_schema(
                             role,
                             string_scores=judge_spec.provider == "anthropic",
+                            fixed_rule_keys=judge_spec.provider == "anthropic",
                         ),
                     )
                     call = result.to_dict()
@@ -2075,6 +2172,7 @@ def _base_judge_json_schema(
     turns: int,
     *,
     fixed_turn_keys: bool = False,
+    fixed_rule_keys: bool = False,
 ) -> Dict[str, Any]:
     rule_ids = [rule.id for rule in role.judge_rules]
     score_schema: Dict[str, Any] = (
@@ -2082,21 +2180,46 @@ def _base_judge_json_schema(
         if fixed_turn_keys
         else {"type": "integer", "enum": [1, 2, 3, 4, 5]}
     )
+    finding_properties = {
+        "rule_id": {"type": "string", "enum": rule_ids},
+        "verdict": {
+            "type": "string",
+            "enum": ["pass", "partial", "fail", "not_applicable"],
+        },
+        "confidence": {"type": "number"},
+        "evidence": {"type": "string"},
+        "rationale": {"type": "string"},
+    }
     finding = {
         "type": "object",
-        "properties": {
-            "rule_id": {"type": "string", "enum": rule_ids},
-            "verdict": {
-                "type": "string",
-                "enum": ["pass", "partial", "fail", "not_applicable"],
-            },
-            "confidence": {"type": "number"},
-            "evidence": {"type": "string"},
-            "rationale": {"type": "string"},
-        },
+        "properties": finding_properties,
         "required": ["rule_id", "verdict", "confidence", "evidence", "rationale"],
         "additionalProperties": False,
     }
+    if fixed_rule_keys:
+        keyed_finding = {
+            "type": "object",
+            "properties": {
+                key: value
+                for key, value in finding_properties.items()
+                if key != "rule_id"
+            },
+            "required": ["verdict", "confidence", "evidence", "rationale"],
+            "additionalProperties": False,
+        }
+        rule_findings_schema: Dict[str, Any] = {
+            "type": "object",
+            "properties": {rule_id: keyed_finding for rule_id in rule_ids},
+            "required": rule_ids,
+            "additionalProperties": False,
+        }
+    else:
+        rule_findings_schema = {
+            "type": "array",
+            "items": finding,
+            "minItems": len(rule_ids),
+            "maxItems": len(rule_ids),
+        }
     turn_fidelity = {
         "type": "object",
         "properties": {
@@ -2149,12 +2272,7 @@ def _base_judge_json_schema(
                 "required": list(LEGACY_DIMENSIONS),
                 "additionalProperties": False,
             },
-            "rule_findings": {
-                "type": "array",
-                "items": finding,
-                "minItems": len(rule_ids),
-                "maxItems": len(rule_ids),
-            },
+            "rule_findings": rule_findings_schema,
             "turn_fidelity": turn_fidelity_schema,
         },
         "required": ["evaluation_reason", "legacy_scores", "rule_findings", "turn_fidelity"],
@@ -2166,6 +2284,7 @@ def _judge_json_schema(
     role: RoleDefinition,
     *,
     string_scores: bool = False,
+    fixed_rule_keys: bool = False,
 ) -> Dict[str, Any]:
     rule_ids = [rule.id for rule in role.judge_rules]
     score_schema: Dict[str, Any] = (
@@ -2173,35 +2292,55 @@ def _judge_json_schema(
         if string_scores
         else {"type": "integer", "enum": [1, 2, 3, 4, 5]}
     )
+    finding_properties = {
+        "rule_id": {"type": "string", "enum": rule_ids},
+        "verdict": {
+            "type": "string",
+            "enum": ["pass", "partial", "fail", "not_applicable"],
+        },
+        "confidence": {"type": "number"},
+        "evidence": {"type": "string"},
+        "rationale": {"type": "string"},
+    }
+    if fixed_rule_keys:
+        keyed_finding = {
+            "type": "object",
+            "properties": {
+                key: value
+                for key, value in finding_properties.items()
+                if key != "rule_id"
+            },
+            "required": ["verdict", "confidence", "evidence", "rationale"],
+            "additionalProperties": False,
+        }
+        findings_schema: Dict[str, Any] = {
+            "type": "object",
+            "properties": {rule_id: keyed_finding for rule_id in rule_ids},
+            "required": rule_ids,
+            "additionalProperties": False,
+        }
+    else:
+        findings_schema = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": finding_properties,
+                "required": [
+                    "rule_id",
+                    "verdict",
+                    "confidence",
+                    "evidence",
+                    "rationale",
+                ],
+                "additionalProperties": False,
+            },
+            "minItems": len(rule_ids),
+            "maxItems": len(rule_ids),
+        }
     return {
         "type": "object",
         "properties": {
-            "findings": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "rule_id": {"type": "string", "enum": rule_ids},
-                        "verdict": {
-                            "type": "string",
-                            "enum": ["pass", "partial", "fail", "not_applicable"],
-                        },
-                        "confidence": {"type": "number"},
-                        "evidence": {"type": "string"},
-                        "rationale": {"type": "string"},
-                    },
-                    "required": [
-                        "rule_id",
-                        "verdict",
-                        "confidence",
-                        "evidence",
-                        "rationale",
-                    ],
-                    "additionalProperties": False,
-                },
-                "minItems": len(rule_ids),
-                "maxItems": len(rule_ids),
-            },
+            "findings": findings_schema,
             "quality_scores": {
                 "type": "object",
                 "properties": {
@@ -2715,6 +2854,21 @@ def _generation_limits(config: Mapping[str, Any]) -> Tuple[int, int]:
     if target_limit < 1 or user_limit < 1:
         raise SchemaError("Generation output token limits must be positive")
     return target_limit, user_limit
+
+
+def _sync_rate_limit_policy(config: Mapping[str, Any]) -> Tuple[int, float]:
+    generation = config.get("generation") or {}
+    if not isinstance(generation, Mapping):
+        raise SchemaError("Benchmark config generation must be an object")
+    max_attempts = int(generation.get("sync_rate_limit_max_attempts", 3))
+    backoff_seconds = float(generation.get("sync_rate_limit_backoff_seconds", 30))
+    if max_attempts < 1:
+        raise SchemaError("generation.sync_rate_limit_max_attempts must be at least 1")
+    if backoff_seconds < 0:
+        raise SchemaError(
+            "generation.sync_rate_limit_backoff_seconds must be zero or greater"
+        )
+    return max_attempts, backoff_seconds
 
 
 def _validate_required_pilot_report(
