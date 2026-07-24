@@ -71,6 +71,13 @@ SUMMARY_METRICS = (
     "robustness_score",
     "recovery_score",
 )
+RP_BALANCE_METRICS = (
+    "core_fidelity_score",
+    "conversation_quality_score",
+    "long_term_stability_score",
+    "robustness_score",
+    "recovery_score",
+)
 EXPENSIVE_JUDGE_PROVIDERS = {"gemini", "anthropic"}
 RUN_FINGERPRINT_SCHEMA_VERSION = "1.0"
 FINGERPRINT_SOURCE_FILES = (
@@ -2523,6 +2530,7 @@ def _build_leaderboard(
                     "from the frozen 2024 protocol."
                 ),
             }
+    ranking = _apply_leaderboard_ranking(targets)
     for usage in usage_by_model.values():
         usage["estimated_list_cost_usd"] = round(usage["estimated_list_cost_usd"], 6)
         usage["estimated_effective_cost_usd"] = round(
@@ -2533,6 +2541,17 @@ def _build_leaderboard(
         "run_fingerprint": run_fingerprint,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "targets": targets,
+        "ranking": ranking,
+        "ranking_method": {
+            "name": "eligible-major-rp-balance",
+            "order": [
+                "eligible_scenarios descending",
+                "major_violations ascending",
+                "rp_balance_score descending",
+                "legacy_base.overall_average descending",
+            ],
+            "rp_balance_metrics": list(RP_BALANCE_METRICS),
+        },
         "usage_by_model": usage_by_model,
         "estimated_list_cost_usd": round(
             sum(value["estimated_list_cost_usd"] for value in usage_by_model.values()),
@@ -2543,12 +2562,40 @@ def _build_leaderboard(
             6,
         ),
         "notes": [
-            "Scores are macro-averaged across scenarios; no weighted overall score is defined.",
+            "RP Balance is the unweighted mean of the five primary v2 score axes.",
+            "Ranking applies the major-violation gate before RP Balance; it is not a weighted overall score.",
             "List costs do not account for discounts; effective costs apply the 50% "
             "OpenAI/Gemini/Anthropic Batch API multiplier recorded on each call.",
             "Effective costs do not account for free tiers or data-sharing incentives.",
         ],
     }
+
+
+def _apply_leaderboard_ranking(targets: Dict[str, Dict[str, Any]]) -> List[str]:
+    for target in targets.values():
+        metrics = target["metrics"]
+        values = [metrics.get(metric) for metric in RP_BALANCE_METRICS]
+        target["rp_balance_score"] = (
+            None
+            if any(value is None for value in values)
+            else round(mean(float(value) for value in values), 3)
+        )
+
+    def rank_key(target_id: str) -> Tuple[float, float, float, float]:
+        target = targets[target_id]
+        rp_balance = target.get("rp_balance_score")
+        legacy_average = target.get("legacy_base", {}).get("overall_average")
+        return (
+            -float(target["eligible_scenarios"]),
+            float(target["major_violations"]),
+            -(float(rp_balance) if rp_balance is not None else -1.0),
+            -(float(legacy_average) if legacy_average is not None else -1.0),
+        )
+
+    ranking = sorted(targets, key=rank_key)
+    for rank, target_id in enumerate(ranking, start=1):
+        targets[target_id]["rank"] = rank
+    return ranking
 
 
 def _accumulate_usage(

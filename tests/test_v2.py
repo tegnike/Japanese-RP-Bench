@@ -40,6 +40,7 @@ from japanese_rp_bench.v2.scoring import score_conversation
 from japanese_rp_bench.v2.schemas import Conversation, JudgeEvaluation, SchemaError, Verdict
 from japanese_rp_bench.v2.runner import (
     _GenerationTask,
+    _apply_leaderboard_ranking,
     _base_judge_json_schema,
     _build_run_fingerprint,
     _conversation_fingerprint,
@@ -83,6 +84,50 @@ def nike_conversation() -> Conversation:
             ],
         }
     )
+
+
+class LeaderboardRankingTests(unittest.TestCase):
+    def test_major_violation_gate_precedes_unweighted_rp_balance(self) -> None:
+        def target(
+            eligible: int,
+            major: int,
+            scores: list[float],
+            legacy: float,
+        ) -> dict:
+            metric_names = (
+                "core_fidelity_score",
+                "conversation_quality_score",
+                "long_term_stability_score",
+                "robustness_score",
+                "recovery_score",
+            )
+            return {
+                "eligible_scenarios": eligible,
+                "major_violations": major,
+                "metrics": dict(zip(metric_names, scores)),
+                "legacy_base": {"overall_average": legacy},
+            }
+
+        targets = {
+            "higher-balance-more-violations": target(
+                34, 2, [100.0, 100.0, 100.0, 100.0, 100.0], 5.0
+            ),
+            "eligible-first": target(35, 1, [90.0, 90.0, 90.0, 90.0, 90.0], 4.0),
+            "balance-tiebreak": target(35, 1, [95.0, 95.0, 95.0, 95.0, 95.0], 3.0),
+        }
+
+        ranking = _apply_leaderboard_ranking(targets)
+
+        self.assertEqual(
+            ranking,
+            [
+                "balance-tiebreak",
+                "eligible-first",
+                "higher-balance-more-violations",
+            ],
+        )
+        self.assertEqual(targets["balance-tiebreak"]["rp_balance_score"], 95.0)
+        self.assertEqual(targets["balance-tiebreak"]["rank"], 1)
 
 
 def judge_evaluations(role) -> list[JudgeEvaluation]:
