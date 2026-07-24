@@ -13,7 +13,7 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | 正式条件で再実行する | [正式計測プロトコル](benchmark-v2-production-protocol.md) | [設定ファイル案内](../configs/README.md) |
 | OpenCode Goで実行する | [OpenCode Go実行ガイド](opencode-go.md) | [設定ファイル案内](../configs/README.md) |
 | Role Packを作る | [Role Pack作成ガイド](../role_packs/README.md) | [v2設計概要](benchmark-v2.md) |
-| 旧結果や判断経緯を調べる | [結果・監査記録](#結果監査記録) | [フォーク元v1保存版](upstream-v1.md) |
+| 評価条件の変更履歴や旧結果を調べる | [評価履歴・監査資料](evaluation-history.md) | [フォーク元v1保存版](upstream-v1.md) |
 
 ## 文書の分類
 
@@ -34,19 +34,10 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 |---|---|
 | [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md) | **現行の正式結果**。11モデルすべて36/36完了 |
 
-### 結果監査記録
+### 評価履歴と監査資料
 
-以下は日付時点の記録です。本文中の「現在」「次回」「完了後」は、その記録日時点の意味です。
-現行の順位や推奨実行条件として読み替えないでください。
-
-| 文書 | 分類 | 主な内容 |
-|---|---|---|
-| [`benchmark-v2-production-status-2026-07-23.md`](benchmark-v2-production-status-2026-07-23.md) | 進捗スナップショット | 384 token問題、6/11完了時点の停止判断 |
-| [`full-results-openai-user-2026-07-20.md`](full-results-openai-user-2026-07-20.md) | 旧プロトコル | GPT-5.4 miniユーザー役、384 token条件 |
-| [`full-results-gemini-user-2026-07-20.md`](full-results-gemini-user-2026-07-20.md) | 旧プロトコル | Geminiユーザー役による比較 |
-| [`opencode-go-results-2026-07-22.md`](opencode-go-results-2026-07-22.md) | 旧プロトコル | OpenCode Go、最小Reasoning、384 token条件 |
-| [`opencode-go-results-2026-07-21.md`](opencode-go-results-2026-07-21.md) | 旧プロトコル | OpenCode Go、provider既定Reasoning、1,024 token条件 |
-| [`pilot-results-2026-07-20.md`](pilot-results-2026-07-20.md) | 初期pilot | 4対象、2 Judgeによる初期検証 |
+[`evaluation-history.md`](evaluation-history.md)に、過去の試行、評価条件を変更した理由、
+旧結果の扱い、日付付き監査文書への導線を時系列でまとめています。
 
 ### フォーク元の保存資料
 
