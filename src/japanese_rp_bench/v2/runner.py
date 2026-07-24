@@ -442,6 +442,14 @@ def run_generation_pilot(
         run_fingerprint,
         pilot_final_turn_only=True,
     )
+    _run_synchronous_pilot_judges(
+        output_root,
+        jobs,
+        judge_specs,
+        config,
+        legacy_rubric,
+        run_fingerprint,
+    )
     report = _build_generation_pilot_report(
         output_root,
         jobs,
@@ -1498,6 +1506,53 @@ def _run_batch_judges(
             )
 
 
+def _run_synchronous_pilot_judges(
+    output_root: Path,
+    jobs: Sequence[Tuple[RolePack, ScenarioDefinition, ModelSpec]],
+    judge_specs: Sequence[ModelSpec],
+    config: Mapping[str, Any],
+    legacy_rubric: str,
+    run_fingerprint: str,
+) -> None:
+    synchronous_specs = [spec for spec in judge_specs if not spec.batch]
+    if not synchronous_specs:
+        return
+    for role_pack, scenario, target_spec in jobs:
+        role = role_pack.roles[scenario.role_id]
+        stem = f"{_safe_name(role_pack.id)}__{_safe_name(scenario.id)}"
+        conversation_path = (
+            output_root / "conversations" / _safe_name(target_spec.id) / f"{stem}.json"
+        )
+        conversation = Conversation.from_dict(
+            json.loads(conversation_path.read_text(encoding="utf-8"))
+        )
+        judgment_path = (
+            output_root / "judgments" / _safe_name(target_spec.id) / f"{stem}.jsonl"
+        )
+        if scenario.track == "legacy-base":
+            _generate_base_judgments(
+                judgment_path,
+                role,
+                scenario,
+                conversation,
+                synchronous_specs,
+                legacy_rubric,
+                int(config["evaluation"].get("base_judge_max_output_tokens", 8192)),
+                run_fingerprint,
+            )
+        else:
+            _generate_judgments(
+                judgment_path,
+                role,
+                scenario,
+                conversation,
+                synchronous_specs,
+                int(config["evaluation"].get("judge_max_output_tokens", 4096)),
+                run_fingerprint,
+                final_turn_only=True,
+            )
+
+
 def _collect_batch_judge_tasks(
     output_root: Path,
     jobs: Sequence[Tuple[RolePack, ScenarioDefinition, ModelSpec]],
@@ -1538,13 +1593,7 @@ def _collect_batch_judge_tasks(
         if scenario.track == "legacy-base":
             if any(str(item.get("judge_id")) == judge_spec.id for item in artifacts):
                 continue
-            request = build_base_judge_request(
-                role,
-                scenario,
-                conversation,
-                legacy_rubric,
-                keyed_findings=judge_spec.provider == "anthropic",
-            )
+            request = build_base_judge_request(role, scenario, conversation, legacy_rubric)
             tasks.append(
                 _BatchJudgeTask(
                     key=_batch_task_key(target_spec.id, role_pack.id, scenario.id, judge_spec.id),
@@ -1563,7 +1612,6 @@ def _collect_batch_judge_tasks(
                         role,
                         len(conversation.turns),
                         fixed_turn_keys=judge_spec.provider == "anthropic",
-                        fixed_rule_keys=judge_spec.provider == "anthropic",
                     ),
                     run_fingerprint=run_fingerprint,
                     conversation_fingerprint=conversation_fingerprint,
@@ -1978,13 +2026,7 @@ def _generate_base_judgments(
         call_attempts = []
         last_error: Exception | None = None
         attempts = 1 if judge_spec.provider in EXPENSIVE_JUDGE_PROVIDERS else 3
-        request = build_base_judge_request(
-            role,
-            scenario,
-            conversation,
-            legacy_rubric,
-            keyed_findings=judge_spec.provider == "anthropic",
-        )
+        request = build_base_judge_request(role, scenario, conversation, legacy_rubric)
         for _ in range(attempts):
             try:
                 result = generate_text(
@@ -1997,7 +2039,6 @@ def _generate_base_judgments(
                         role,
                         len(conversation.turns),
                         fixed_turn_keys=judge_spec.provider == "anthropic",
-                        fixed_rule_keys=judge_spec.provider == "anthropic",
                     ),
                 )
                 call = result.to_dict()
@@ -2059,6 +2100,8 @@ def _generate_judgments(
     judge_specs: Sequence[ModelSpec],
     max_output_tokens: int,
     run_fingerprint: str,
+    *,
+    final_turn_only: bool = False,
 ) -> List[JudgeEvaluation]:
     artifacts = _read_jsonl(path) if path.is_file() else []
     conversation_fingerprint = _conversation_fingerprint(conversation)
@@ -2073,7 +2116,8 @@ def _generate_judgments(
         for item in artifacts
         if _is_complete_judge_artifact(item, role)
     }
-    for turn in conversation.turns:
+    turns_to_judge = conversation.turns[-1:] if final_turn_only else conversation.turns
+    for turn in turns_to_judge:
         for judge_spec in judge_specs:
             key = (judge_spec.id, turn.index)
             if key in existing:
@@ -2163,7 +2207,11 @@ def _generate_judgments(
                 raise SchemaError(
                     f"Judge {judge_spec.id} returned invalid output after retries: {last_error}"
                 )
-    ordered = [existing[(spec.id, turn.index)] for turn in conversation.turns for spec in judge_specs]
+    ordered = [
+        existing[(spec.id, turn.index)]
+        for turn in turns_to_judge
+        for spec in judge_specs
+    ]
     return [JudgeEvaluation.from_dict(item, role) for item in ordered]
 
 
@@ -2172,7 +2220,6 @@ def _base_judge_json_schema(
     turns: int,
     *,
     fixed_turn_keys: bool = False,
-    fixed_rule_keys: bool = False,
 ) -> Dict[str, Any]:
     rule_ids = [rule.id for rule in role.judge_rules]
     score_schema: Dict[str, Any] = (
@@ -2196,30 +2243,12 @@ def _base_judge_json_schema(
         "required": ["rule_id", "verdict", "confidence", "evidence", "rationale"],
         "additionalProperties": False,
     }
-    if fixed_rule_keys:
-        keyed_finding = {
-            "type": "object",
-            "properties": {
-                key: value
-                for key, value in finding_properties.items()
-                if key != "rule_id"
-            },
-            "required": ["verdict", "confidence", "evidence", "rationale"],
-            "additionalProperties": False,
-        }
-        rule_findings_schema: Dict[str, Any] = {
-            "type": "object",
-            "properties": {rule_id: keyed_finding for rule_id in rule_ids},
-            "required": rule_ids,
-            "additionalProperties": False,
-        }
-    else:
-        rule_findings_schema = {
-            "type": "array",
-            "items": finding,
-            "minItems": len(rule_ids),
-            "maxItems": len(rule_ids),
-        }
+    rule_findings_schema: Dict[str, Any] = {
+        "type": "array",
+        "items": finding,
+        "minItems": len(rule_ids),
+        "maxItems": len(rule_ids),
+    }
     turn_fidelity = {
         "type": "object",
         "properties": {

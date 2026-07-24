@@ -851,7 +851,12 @@ def _post_json(
 
 def _safe_error(value: Any) -> str:
     if isinstance(value, Mapping):
-        return str(value.get("message", value.get("status", "unknown error")))[:500]
+        if value.get("message"):
+            return str(value["message"])[:500]
+        nested = value.get("error")
+        if nested is not None and nested is not value:
+            return _safe_error(nested)
+        return str(value.get("status", value.get("type", "unknown error")))[:500]
     return str(value)[:500]
 
 

@@ -46,6 +46,7 @@ from japanese_rp_bench.v2.runner import (
     _execute_synchronous_generation_tasks,
     _generate_base_judgments,
     _generate_conversation,
+    _generate_judgments,
     _is_complete_judge_artifact,
     _judge_json_schema,
     _json_sha256,
@@ -213,6 +214,40 @@ class JudgeContractTests(unittest.TestCase):
         )
         response_schema = request.user_prompt.split("RESPONSE_SCHEMA\n", 1)[1]
         self.assertIn(f'"{self.role.judge_rules[0].id}": {{', response_schema)
+
+    def test_synchronous_pilot_judge_can_evaluate_only_the_final_turn(self) -> None:
+        judge = ModelSpec("judge-sync", "openai", "judge-model", "KEY", "low", 0, 0)
+        payload = judge_evaluations(self.role)[0].to_dict()
+        payload.pop("judge_id")
+        payload.pop("turn")
+        result = GenerationResult(
+            json.dumps(payload),
+            judge.model,
+            judge.model,
+            judge.provider,
+            "response-final-turn",
+            1,
+            1,
+        )
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "japanese_rp_bench.v2.runner.generate_text",
+            return_value=result,
+        ) as generate:
+            evaluations = _generate_judgments(
+                Path(directory) / "judgments.jsonl",
+                self.role,
+                self.scenario,
+                self.conversation,
+                [judge],
+                4096,
+                "fixture-run",
+                final_turn_only=True,
+            )
+        self.assertEqual(generate.call_count, 1)
+        self.assertEqual(
+            [evaluation.turn for evaluation in evaluations],
+            [len(self.conversation.turns)],
+        )
 
 
 class SynchronousRateLimitTests(unittest.TestCase):
@@ -747,6 +782,40 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(results[0].generation.text, '{"ok":true}')
         self.assertEqual(results[0].generation.billing_mode, "batch")
         self.assertEqual(results[0].generation.requested_max_output_tokens, 4096)
+
+    def test_anthropic_batch_preserves_nested_provider_error_message(self) -> None:
+        spec = ModelSpec(
+            "judge-anthropic",
+            "anthropic",
+            "claude-haiku-4-5-20251001",
+            "KEY",
+            "low",
+            1,
+            2,
+            batch=True,
+        )
+        request = BatchRequest("r00000", {"max_tokens": 8192})
+        rows = [
+            {
+                "custom_id": "r00000",
+                "result": {
+                    "type": "errored",
+                    "error": {
+                        "type": "error",
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "The compiled grammar is too large",
+                        },
+                    },
+                },
+            }
+        ]
+        with patch.dict("os.environ", {"KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.batch._get_jsonl",
+            return_value=rows,
+        ):
+            results = read_batch_results(spec, "batch-anthropic", {}, [request])
+        self.assertEqual(results[0].error, "The compiled grammar is too large")
 
     def test_truncated_batch_result_keeps_raw_generation_and_is_terminal(self) -> None:
         spec = ModelSpec(
@@ -1568,19 +1637,18 @@ class BaseTrackTests(unittest.TestCase):
         with self.assertRaisesRegex(SchemaError, "conflicting duplicate verdicts"):
             parse_base_judge_response(json.dumps(payload), "judge-claude", role, 2)
 
-    def test_anthropic_base_schema_uses_fixed_rule_and_turn_keys(self) -> None:
+    def test_anthropic_base_schema_keeps_compact_rule_array_and_fixed_turn_keys(self) -> None:
         pack = build_base_role_pack(self.cases(), turns=2)
         role = pack.roles["legacy_role_00"]
         schema = _base_judge_json_schema(
             role,
             2,
             fixed_turn_keys=True,
-            fixed_rule_keys=True,
         )
         rule_findings = schema["properties"]["rule_findings"]
         turn_fidelity = schema["properties"]["turn_fidelity"]
-        self.assertEqual(rule_findings["type"], "object")
-        self.assertEqual(set(rule_findings["required"]), {rule.id for rule in role.rules})
+        self.assertEqual(rule_findings["type"], "array")
+        self.assertEqual(rule_findings["minItems"], len(role.rules))
         self.assertEqual(turn_fidelity["type"], "object")
         self.assertEqual(turn_fidelity["required"], ["1", "2"])
         request = build_base_judge_request(
@@ -1598,10 +1666,9 @@ class BaseTrackTests(unittest.TestCase):
                 }
             ),
             "fixture rubric",
-            keyed_findings=True,
         )
         response_schema = request.user_prompt.split("RESPONSE_SCHEMA\n", 1)[1]
-        self.assertIn(f'"{role.rules[0].id}": {{', response_schema)
+        self.assertIn('"rule_findings": [', response_schema)
 
     def test_simulated_base_conversation_generates_user_and_target_turns(self) -> None:
         pack = build_base_role_pack(self.cases(), turns=2)

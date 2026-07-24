@@ -185,8 +185,6 @@ def build_base_judge_request(
     scenario: ScenarioDefinition,
     conversation: Conversation,
     legacy_rubric: str,
-    *,
-    keyed_findings: bool = False,
 ) -> BaseJudgeRequest:
     """Ask one blind judge for both the original and extended measurements."""
 
@@ -207,29 +205,18 @@ def build_base_judge_request(
         ],
         "conversation": history,
     }
-    finding_schema = {
-        "verdict": "pass | partial | fail | not_applicable",
-        "confidence": "number 0-1",
-        "evidence": "short evidence",
-        "rationale": "short reason",
-    }
-    findings_schema: Any
-    if keyed_findings:
-        findings_schema = {
-            rule.id: dict(finding_schema)
-            for rule in role.judge_rules
-        }
-    else:
-        findings_schema = [
-            {
-                "rule_id": "exact supplied rule id",
-                **finding_schema,
-            }
-        ]
     schema = {
         "evaluation_reason": "brief reason covering material strengths and failures",
         "legacy_scores": {dimension: "integer 1-5" for dimension in LEGACY_DIMENSIONS},
-        "rule_findings": findings_schema,
+        "rule_findings": [
+            {
+                "rule_id": "exact supplied rule id",
+                "verdict": "pass | partial | fail | not_applicable",
+                "confidence": "number 0-1",
+                "evidence": "short evidence",
+                "rationale": "short reason",
+            }
+        ],
         "turn_fidelity": [
             {
                 "turn": "integer; include every turn exactly once",

@@ -42,14 +42,14 @@ models:
     input_price_per_million: 0.75
     output_price_per_million: 4.5
   targets:
-    - id: opencode-go-kimi-k3
-      provider: opencode_go
-      api_style: openai_chat
-      model: kimi-k3
-      api_key_env: OPENCODE_GO_API_KEY
+    - id: gpt-5.6-sol
+      provider: openai
+      model: gpt-5.6-sol
+      api_key_env: OPENAI_API_KEY
       reasoning: none
-      input_price_per_million: 3.0
-      output_price_per_million: 15.0
+      batch: false
+      input_price_per_million: 5.0
+      output_price_per_million: 30.0
   judges:
     - id: judge-gpt-5.4-mini-2026-03-17
       provider: openai
@@ -64,9 +64,9 @@ models:
       model: gemini-3.5-flash
       api_key_env: GEMINI_API_KEY
       reasoning: low
+      batch: true
       input_price_per_million: 1.5
       output_price_per_million: 9.0
-      batch: true
     - id: judge-claude-haiku-4.5-20251001
       provider: anthropic
       model: claude-haiku-4-5-20251001
@@ -76,5 +76,5 @@ models:
       input_price_per_million: 1.0
       output_price_per_million: 5.0
 notes:
-  - OpenCode Go 429解消probe後にKimi K3だけをfresh成果物で補完する正式shard
+  - GPT-5.6 SolのClaude Judge構造化出力欠落を修正後のfresh成果物で補完する正式shard
   - OpenAI経路だけはユーザー承認済みの同期APIを使い、token上限、Reasoning、3 Judgeは維持する
