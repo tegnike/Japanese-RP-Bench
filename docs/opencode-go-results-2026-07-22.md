@@ -1,5 +1,12 @@
 # Japanese-RP-Bench v2 OpenCode Go Minimum-Reasoning Results（2026-07-22）
 
+> **旧384 tokenプロトコルの保存資料:** Reasoning設定は明示されていますが、対象出力上限が
+> 384 tokenの旧計測です。途中打ち切りの影響があるため現行の正式順位には使いません。
+> 現行結果は
+> [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md)
+> を参照してください。下記コマンドが参照する追跡版configは後日更新されているため、
+> 当時の成果物を厳密には再現しません。
+
 ## 実行条件
 
 - Base: 元のSFWデータセット30設定、各10往復、従来8指標

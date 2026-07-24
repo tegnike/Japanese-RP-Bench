@@ -1,5 +1,12 @@
 # Japanese-RP-Bench v2 Full Results — GPT-5.4 miniユーザー役（2026-07-20）
 
+> **旧384 tokenプロトコルの保存資料:** この結果は対象出力上限384 tokenで取得した旧計測で、
+> 現行の正式順位には使いません。現行結果と再評価理由は
+> [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md)
+> と[`benchmark-v2-production-protocol.md`](benchmark-v2-production-protocol.md)を
+> 参照してください。下記コマンドが参照する追跡版configは後日更新されているため、
+> 当時の成果物を厳密には再現しません。
+
 ## 実行条件
 
 - Base: 元のSFWデータセット30設定、各10往復、従来8指標

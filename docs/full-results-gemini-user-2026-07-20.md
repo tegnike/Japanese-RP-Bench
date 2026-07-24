@@ -1,6 +1,12 @@
 # Japanese-RP-Bench v2 Full Results — Geminiユーザー役（旧プロトコル、2026-07-20）
 
-この文書は比較用に残した旧プロトコルです。現在のGPT-5.4 miniユーザー役による結果は[`full-results-openai-user-2026-07-20.md`](full-results-openai-user-2026-07-20.md)を参照してください。
+> **旧プロトコルの保存資料:** これはGemini 3.5 Flashをユーザー役にした2026-07-20時点の
+> 比較記録で、現行の正式順位には使いません。同日のGPT-5.4 miniユーザー役による旧結果は
+> [`full-results-openai-user-2026-07-20.md`](full-results-openai-user-2026-07-20.md)、
+> 現行結果は
+> [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md)
+> を参照してください。下記コマンドが参照する追跡版configは後日更新されているため、
+> 当時の成果物を厳密には再現しません。
 
 ## 実行条件
 

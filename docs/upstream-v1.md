@@ -5,6 +5,11 @@
 実行方法を保存したものです。現在のv2については[リポジトリのREADME](../README.md)を
 参照してください。
 
+> **編集注:** 以下のフォーク元本文は「評価項目は8個」としていますが、箇条書きでは
+> `Appropriateness of Turn-Taking`が抜けて7項目になっています。結果表と
+> [`prompts/eval_prompt_SFW.txt`](../prompts/eval_prompt_SFW.txt)には8項目すべてがあります。
+> 保存版の本文は書き換えず、この注記で欠落を明示します。
+
 ![システム概要](../images/system.png)
 
 ## 概要

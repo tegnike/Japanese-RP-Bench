@@ -1,12 +1,14 @@
 # Japanese-RP-Bench v2 OpenCode Go Results（2026-07-21）
 
-> **Reasoning条件に関する注意:** この文書は、最小ReasoningをAPI要求へ明示する実装を
-> 導入する前の結果です。設定ファイル上は対象モデルに`reasoning: none`を指定していましたが、
-> 当時のOpenCode Goプロバイダー実装はその値をAPI payloadへ転送していませんでした。
-> したがって、対象生成には各モデルのプロバイダー既定Reasoningと
-> `max_output_tokens: 1024`が使われており、[現行のReasoning policy](benchmark-v2.md#reasoning-policy)
-> に基づく最小Reasoning実行の結果ではありません。最小Reasoningでの再評価結果は、完了後に
-> 別実行として公開し、この文書とREADMEの比較表を更新します。
+> **旧プロトコルの保存資料:** この文書は、最小ReasoningをAPI要求へ明示する実装を導入する
+> 前の結果です。設定ファイル上は対象モデルに`reasoning: none`を指定していましたが、
+> 当時のOpenCode Go provider実装はその値をAPI payloadへ転送していませんでした。
+> 対象生成には各モデルのprovider既定Reasoningと`max_output_tokens: 1024`が使われており、
+> [現行のReasoning policy](benchmark-v2.md#reasoning-policy)による正式結果ではありません。
+> 2026-07-22の最小Reasoning・旧384 token結果は
+> [`opencode-go-results-2026-07-22.md`](opencode-go-results-2026-07-22.md)、現行結果は
+> [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md)
+> を参照してください。下記コマンドが参照する追跡版configは後日更新されています。
 
 ## 実行条件
 

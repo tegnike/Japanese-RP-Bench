@@ -1,5 +1,11 @@
 # v2 Pilot Results — 2026-07-20
 
+> **初期pilotの保存資料:** これは4対象・2 Judgeで評価器を確認した初期記録です。
+> 現行の11モデル正式プロトコル、必須pilot、正式結果は
+> [`benchmark-v2-production-protocol.md`](benchmark-v2-production-protocol.md)と
+> [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md)
+> を参照してください。
+
 ## 実行条件
 
 - Role Pack: `core-ja 0.1.0`、`adversarial-ja 0.1.0`、`long-horizon-ja 0.1.0`、`custom-nikechan 0.1.1`

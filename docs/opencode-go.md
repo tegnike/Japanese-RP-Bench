@@ -1,4 +1,4 @@
-# OpenCode Go評価対象の準備
+# OpenCode Go実行ガイド
 
 確認日: 2026-07-24
 
@@ -41,15 +41,17 @@ OpenCode GoではモデルによってAPI形式が異なる。候補設定では
 - `openai_chat`: `https://opencode.ai/zen/go/v1/chat/completions`
 - `anthropic_messages`: `https://opencode.ai/zen/go/v1/messages`
 
-[OpenCode Go公式資料](https://opencode.ai/docs/go/)では、`Use balance`を有効にするとGoの
+[OpenCode Go公式資料](https://dev.opencode.ai/docs/go/)では、`Use balance`を有効にするとGoの
 利用上限後も同じ`/zen/go/v1`経路からZen残高へフォールバックする。Go枠消費後に追加した
 残高のためにKimi K3を別endpointへ変更する仕様ではない。通常の
 [OpenCode Zen](https://dev.opencode.ai/docs/zen/)にはKimi K3が掲載されていないため、
 `/zen/v1`をKimi K3の代替経路として使用しない。
 
-## 候補
+## 正式評価対象
 
-`configs/benchmark_opencode_go_candidates.yaml`は、コード特化版ではなく汎用上位モデルを各系列から一つずつ選んだ比較候補である。
+`configs/benchmark_opencode_go_candidates.yaml`は、コード特化版ではなく汎用上位モデルを
+各系列から一つずつ選んだ正式評価用設定である。設定ファイル全体の使い分けは
+[`configs/README.md`](../configs/README.md)を参照する。
 
 | 系列 | 候補 | 選定理由 |
 |---|---|---|
@@ -74,13 +76,13 @@ Kimi K2.7 Codeはコーディング特化のため、ロールプレイ評価の
 japanese-rp-bench-v2 pilot \
   --config configs/benchmark_opencode_go_candidates.yaml \
   --output tmp/pilot-opencode-go \
-  --workers 4
+  --workers 2
 
 japanese-rp-bench-v2 run \
   --config configs/benchmark_opencode_go_candidates.yaml \
   --output tmp/benchmark-opencode-go \
   --pilot-report tmp/pilot-opencode-go/pilot-report.json \
-  --workers 4
+  --workers 2
 ```
 
 対象モデルは4,096 token、動的ユーザー役は2,048 tokenに分離する。対象モデルの
