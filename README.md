@@ -25,23 +25,27 @@
 11モデル正式計測で固定したtoken上限、Reasoning、Batch wave、失敗時の扱い、
 pilot合格条件、予算、一次資料は
 [`docs/benchmark-v2-production-protocol.md`](docs/benchmark-v2-production-protocol.md)へ集約しています。
-2026-07-23時点の実行結果、失敗理由、費用、決定事項、再開条件は
+2026-07-24時点の完了範囲、失敗理由、Kimiの課金経路調査、費用、決定事項は
+[`docs/benchmark-v2-production-status-2026-07-24.md`](docs/benchmark-v2-production-status-2026-07-24.md)
+に記録しています。前日までの経緯は
 [`docs/benchmark-v2-production-status-2026-07-23.md`](docs/benchmark-v2-production-status-2026-07-23.md)
-に記録しています。
+へ保存しています。
 
 ## 正式再評価の現在地
 
-384 token問題を修正した正式プロトコルで再評価を開始し、11モデル中6モデルが36/36シナリオを
-完了しました。残る5モデルはprovider終端、Judge schema違反、OpenCode Go 429のため未完了です。
-不完全モデルを0点や最下位にせず、全11モデルが揃うまで現行スコアの部分ランキングは公開しません。
+384 token問題を修正した正式プロトコルで再評価し、11枠中9モデルが36/36シナリオと
+3 Judgeを完了しました。GPT-5.6 SolはClaude Judge 1要求が3試行ともschema違反、Kimi K3は
+OpenCode Goの429で全量を完了できず、モデル単位で除外しています。不完全モデルを0点、
+最下位、35件平均として扱いません。
 
 | 状態 | モデル |
 |---|---|
-| 36/36完了 | GPT-5.4 mini、Gemini 3.5 Flash、Claude Haiku 4.5、GLM-5.2、Qwen3.7 Max、MiMo V2.5 Pro |
-| 未完了 | GPT-5.6 Sol、Gemini 3.5 Flash-Lite、DeepSeek V4 Pro、MiniMax M3、Kimi K3 |
+| 36/36完了 | GPT-5.4 mini、Gemini 3.5 Flash、Gemini 3.6 Flash、Claude Haiku 4.5、GLM-5.2、Qwen3.7 Max、DeepSeek V4 Pro、MiniMax M3、MiMo V2.5 Pro |
+| モデル単位で除外 | GPT-5.6 Sol、Kimi K3 |
 
-再評価は2026-07-23時点で一時停止しています。次回は予算上限、fresh rerun、Gemini再置換を
-確認したうえで再開します。
+9モデルの完了値は上記の2026-07-24記録へ掲載していますが、当初予定した全11モデルの
+正式leaderboardとは呼びません。Kimiへの追加試行は停止し、provider側で安定利用できる
+ことを確認できた場合だけ独立shardで再開します。
 
 ## 現在の評価プロトコル
 
@@ -57,11 +61,11 @@ pilot合格条件、予算、一次資料は
 Challengeでは、人格置換、引用文中の命令、存在しない共有記憶、ユーザー代理行動、
 12ターンの設定維持、AIニケちゃん固有の関係性維持などを測定します。
 
-## 旧計測結果（全11モデル完了後に置換予定）
+## 旧384 token計測結果（監査履歴）
 
 > 以下は384 token条件で取得した監査対象の旧結果です。途中打ち切りの影響が判明したため、
-> 一般的なモデル能力ランキングとしては採用しません。上記の正式計測プロトコルで全11モデルを
-> 完了した後、表と結果資料をまとめて置き換えます。
+> 一般的なモデル能力ランキングとしては採用しません。新しい正式条件で36/36を満たした
+> 9モデルの値は2026-07-24の進捗記録へ分離し、この旧表と混在させません。
 
 同じGPT-5.4 miniユーザー役と同じ3 Judgeで評価した11モデルの比較です。
 一つの総合順位へ潰すとモデルごとの長所と弱点が隠れるため、Base会話品質とv2追従性を

@@ -1,12 +1,11 @@
 # OpenCode Go評価対象の準備
 
-確認日: 2026-07-22
+確認日: 2026-07-24
 
-> 2026-07-23の正式プロトコル実行では、Kimi K3がOpenCode GoのHTTP 429で未実行となり、
-> Kimiを除く5モデルを先行した。GLM-5.2、Qwen3.7 Max、MiMo V2.5 Proは36/36完了、
-> DeepSeek V4 ProとMiniMax M3はClaude Judgeのschema違反により35/36で順位対象外である。
-> 現在地と証拠は
-> [`benchmark-v2-production-status-2026-07-23.md`](benchmark-v2-production-status-2026-07-23.md)
+> 2026-07-24までの正式プロトコル実行では、Kimi K3を除く5モデルが36/36完了した。
+> Kimiはpilotと単発疎通には成功したが、2回の全量runがOpenCode GoのHTTP 429で停止したため
+> モデル単位で保留した。現在地、課金経路調査、証拠は
+> [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md)
 > を参照。
 
 ## 接続
@@ -41,6 +40,12 @@ OpenCode GoではモデルによってAPI形式が異なる。候補設定では
 
 - `openai_chat`: `https://opencode.ai/zen/go/v1/chat/completions`
 - `anthropic_messages`: `https://opencode.ai/zen/go/v1/messages`
+
+[OpenCode Go公式資料](https://opencode.ai/docs/go/)では、`Use balance`を有効にするとGoの
+利用上限後も同じ`/zen/go/v1`経路からZen残高へフォールバックする。Go枠消費後に追加した
+残高のためにKimi K3を別endpointへ変更する仕様ではない。通常の
+[OpenCode Zen](https://dev.opencode.ai/docs/zen/)にはKimi K3が掲載されていないため、
+`/zen/v1`をKimi K3の代替経路として使用しない。
 
 ## 候補
 
@@ -96,7 +101,7 @@ OpenCode Goの6対象は同期実行する。GPT-5.4 miniユーザー役とOpenA
 - BatchジョブIDと要求対応表を`<output>/batches/generation/`と`judging/`へ保存
 - 成功済みのJSONL判定は再開時に必ず再利用
 - 1件のJudge形式エラーで、未生成のOpenCode対象会話を止めない
-- エラー、期限切れ、不正JSONになった個別要求だけを最大1回、新しいBatchへ再投入
+- エラー、期限切れ、不正JSONになった個別要求だけを、初回を含め最大3試行まで新しいBatchへ再投入
 - 定価換算とBatch割引後の推定費用をleaderboardへ別々に記録
 
 これにより、完了待ちや結果回収の途中でプロセスが終了しても、同じBatch全体を重複投入せず

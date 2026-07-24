@@ -48,22 +48,6 @@ models:
       batch: true
       input_price_per_million: 5.0
       output_price_per_million: 30.0
-    - id: gpt-5.4-mini-2026-03-17
-      provider: openai
-      model: gpt-5.4-mini-2026-03-17
-      api_key_env: OPENAI_API_KEY
-      reasoning: none
-      batch: true
-      input_price_per_million: 0.75
-      output_price_per_million: 4.5
-    - id: gemini-3.5-flash
-      provider: gemini
-      model: gemini-3.5-flash
-      api_key_env: GEMINI_API_KEY
-      reasoning: minimal
-      batch: true
-      input_price_per_million: 1.5
-      output_price_per_million: 9.0
     - id: gemini-3.6-flash
       provider: gemini
       model: gemini-3.6-flash
@@ -72,14 +56,6 @@ models:
       batch: true
       input_price_per_million: 1.5
       output_price_per_million: 7.5
-    - id: claude-haiku-4.5-20251001
-      provider: anthropic
-      model: claude-haiku-4-5-20251001
-      api_key_env: ANTHROPIC_API_KEY
-      reasoning: none
-      batch: true
-      input_price_per_million: 1.0
-      output_price_per_million: 5.0
   judges:
     - id: judge-gpt-5.4-mini-2026-03-17
       provider: openai
@@ -106,7 +82,6 @@ models:
       input_price_per_million: 1.0
       output_price_per_million: 5.0
 notes:
-  - 旧30ロール・10往復・従来8指標をBaseとして保持する
-  - 同じ会話に原子ルール、ターン別追従度、ドリフトを追加評価する
-  - 追加Role PackはChallenge trackとしてBaseと分けて集計する
-  - 現行の比較用プロトコルではユーザー役をGPT-5.4 miniへ固定する
+  - GPT-5.6 SolのClaude Judge欠落とGemini Flash-Lite置換をfresh成果物で補完する正式shard
+  - 各token上限、Reasoning、ユーザー役、3 Judge、Batch条件は正式プロトコルと同一
+  - Gemini 3.6 Flashは同一失敗会話の単発probeを正式条件で通過した

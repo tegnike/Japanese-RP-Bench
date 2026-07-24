@@ -22,7 +22,7 @@ evaluation:
   base_judge_max_output_tokens: 8192
 batch:
   poll_interval_seconds: 30
-  max_attempts: 2
+  max_attempts: 3
 pilot:
   base_case_ids: [0]
   scenario_ids: [tea_room_twelve_turns]

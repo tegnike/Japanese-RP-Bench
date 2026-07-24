@@ -25,7 +25,7 @@ evaluation:
 batch:
   # OpenAI user/Judge and Gemini/Anthropic judges use asynchronous Batch APIs.
   poll_interval_seconds: 30
-  max_attempts: 2
+  max_attempts: 3
 pilot:
   base_case_ids: [0]
   scenario_ids: [tea_room_twelve_turns]
@@ -120,7 +120,7 @@ models:
 notes:
   - OpenCode Goは評価対象にだけ使用する
   - JudgeはOpenAI、Google、Anthropicの3モデルを維持する
-  - OpenAI、Gemini、AnthropicのJudgeはBatch APIを使用し、失敗項目だけ最大1回再投入する
+  - OpenAI、Gemini、AnthropicのJudgeはBatch APIを使用し、失敗項目だけ最大2回再投入する
   - 全対象会話を生成・保存してからJudge評価を開始する
   - OpenCode Go対象はKimi・GLM・MiMoでreasoning_effort=none、DeepSeekでlow、Qwen・MiniMaxでthinking=disabledを明示する
   - Baseユーザー役は比較可能性のためGPT-5.4 miniへ固定する
