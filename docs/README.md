@@ -8,7 +8,7 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | 目的 | 最初に読む文書 | 次に読む文書 |
 |---|---|---|
 | ベンチマークの概要を知る | [リポジトリREADME](../README.md) | [v2設計概要](benchmark-v2.md) |
-| 最新の正式結果を確認する | [2026-07-25 Claude Sonnet 5追加評価](claude-sonnet-5-results-2026-07-25.md) | [2026-07-25 Claude Opus 5追加評価](claude-opus-5-results-2026-07-25.md) |
+| 最新の正式結果を確認する | [2026-07-25 GPT-5.6 Terra・Luna追加評価](gpt-5.6-terra-luna-results-2026-07-25.md) | [リポジトリREADME](../README.md) |
 | Claude Fable 5の参考値を確認する | [2026-07-25 Claude Fable 5参考評価](claude-fable-5-results-2026-07-25.md) | [正式計測プロトコル](benchmark-v2-production-protocol.md) |
 | 結果を正しく解釈する | [指標定義](metrics.md) | [正式計測プロトコル](benchmark-v2-production-protocol.md) |
 | 正式条件で再実行する | [正式計測プロトコル](benchmark-v2-production-protocol.md) | [設定ファイル案内](../configs/README.md) |
@@ -33,8 +33,9 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 
 | 文書 | 状態 |
 |---|---|
+| [`gpt-5.6-terra-luna-results-2026-07-25.md`](gpt-5.6-terra-luna-results-2026-07-25.md) | **最新の追加正式結果**。GPT-5.6 TerraとLunaが各36/36完了 |
 | [`claude-fable-5-results-2026-07-25.md`](claude-fable-5-results-2026-07-25.md) | **最新の参考評価**。1件を5回拒否後に除外し、残り35/36を完了・順位対象外 |
-| [`claude-sonnet-5-results-2026-07-25.md`](claude-sonnet-5-results-2026-07-25.md) | **最新の追加正式結果**。Claude Sonnet 5が36/36完了 |
+| [`claude-sonnet-5-results-2026-07-25.md`](claude-sonnet-5-results-2026-07-25.md) | Claude Sonnet 5の追加正式結果。36/36完了 |
 | [`claude-opus-5-results-2026-07-25.md`](claude-opus-5-results-2026-07-25.md) | Claude Opus 5の追加正式結果。36/36完了 |
 | [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md) | 先行11モデルの正式結果。全モデル36/36完了 |
 

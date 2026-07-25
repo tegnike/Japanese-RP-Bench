@@ -455,6 +455,12 @@ Anthropic Message Batches、OpenAIのユーザー役とJudgeはユーザー指�
 Geminiの1件が初回`MAX_TOKENS`となり、同一入力・同一上限の2回目を採択した。詳細は
 [`claude-fable-5-results-2026-07-25.md`](claude-fable-5-results-2026-07-25.md)を参照する。
 
+同日のGPT-5.6 Terra・Luna追加評価では、対象2モデル、OpenAIユーザー役、OpenAI Judgeを
+同期Responses API、Gemini JudgeとClaude Judgeを各社Batch APIで実行した。対象は
+`reasoning.effort: none`、4,096 token上限へ固定し、両モデルとも36/36と3 Judgeを完了した。
+詳細は
+[`gpt-5.6-terra-luna-results-2026-07-25.md`](gpt-5.6-terra-luna-results-2026-07-25.md)を参照する。
+
 ブログでは再実行が必要になった理由を簡潔に説明し、新しい正式条件と結果を中心に記載する。
 この技術プロトコルには監査可能性のため、384 token問題、transport例外、設計変更理由を残す。
 
@@ -498,7 +504,10 @@ Geminiの1件が初回`MAX_TOKENS`となり、同一入力・同一上限の2回
 - [Batch API guide](https://developers.openai.com/api/docs/guides/batch) — 50%割引、24時間枠、`/v1/responses`、`custom_id`、順不同結果
 - [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs#structured-outputs-vs-json-mode) — Responses／BatchでのStrict JSON Schema
 - [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol) — Responses、Batch対応
+- [GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra) — Responses、Batch対応
+- [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) — Responses、Batch対応
 - [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) — 固定snapshot、Reasoning、Batch対応
+- [OpenAI API pricing](https://developers.openai.com/api/docs/pricing) — Standard／Batch価格
 - [Latest model guidance](https://developers.openai.com/api/docs/guides/latest-model) — GPT-5系Reasoning設定
 
 ### Google Gemini

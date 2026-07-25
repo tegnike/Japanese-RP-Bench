@@ -1,0 +1,90 @@
+schema_version: "2.0"
+base_track:
+  enabled: true
+  dataset: https://huggingface.co/datasets/Aratako/Japanese-RP-Bench-testdata-SFW/resolve/159cfa0beb56244d6d9b3b2c2423f1f0559de138/Japanese-RP-Bench-testdata-SFW.jsonl
+  turns: 10
+role_packs:
+  - role_packs/core-ja
+  - role_packs/adversarial-ja
+  - role_packs/multi-turn-ja
+  - role_packs/custom/nikechan
+evaluation:
+  deterministic_checks: true
+  legacy_prompt_file: prompts/eval_prompt_SFW.txt
+  judge_ensemble:
+    minimum_judges: 3
+    blind_target_identity: true
+    disagreement_policy: report
+  report:
+    weighted_overall_score: false
+    major_violation_gate: true
+  judge_max_output_tokens: 4096
+  base_judge_max_output_tokens: 8192
+batch:
+  poll_interval_seconds: 30
+  max_attempts: 3
+pilot:
+  base_case_ids: [0]
+  scenario_ids: [tea_room_twelve_turns]
+generation:
+  target_max_output_tokens: 4096
+  user_max_output_tokens: 2048
+  sync_rate_limit_max_attempts: 3
+  sync_rate_limit_backoff_seconds: 30
+models:
+  user_simulator:
+    id: user-gpt-5.4-mini-2026-03-17
+    provider: openai
+    model: gpt-5.4-mini-2026-03-17
+    api_key_env: OPENAI_API_KEY
+    reasoning: none
+    batch: false
+    input_price_per_million: 0.75
+    output_price_per_million: 4.5
+  targets:
+    - id: gpt-5.6-terra
+      provider: openai
+      model: gpt-5.6-terra
+      api_key_env: OPENAI_API_KEY
+      reasoning: none
+      batch: false
+      input_price_per_million: 2.5
+      output_price_per_million: 15.0
+    - id: gpt-5.6-luna
+      provider: openai
+      model: gpt-5.6-luna
+      api_key_env: OPENAI_API_KEY
+      reasoning: none
+      batch: false
+      input_price_per_million: 1.0
+      output_price_per_million: 6.0
+  judges:
+    - id: judge-gpt-5.4-mini-2026-03-17
+      provider: openai
+      model: gpt-5.4-mini-2026-03-17
+      api_key_env: OPENAI_API_KEY
+      reasoning: low
+      batch: false
+      input_price_per_million: 0.75
+      output_price_per_million: 4.5
+    - id: judge-gemini-3.5-flash
+      provider: gemini
+      model: gemini-3.5-flash
+      api_key_env: GEMINI_API_KEY
+      reasoning: low
+      batch: true
+      input_price_per_million: 1.5
+      output_price_per_million: 9.0
+    - id: judge-claude-haiku-4.5-20251001
+      provider: anthropic
+      model: claude-haiku-4-5-20251001
+      api_key_env: ANTHROPIC_API_KEY
+      reasoning: low
+      batch: true
+      input_price_per_million: 1.0
+      output_price_per_million: 5.0
+notes:
+  - GPT-5.6 TerraとGPT-5.6 Lunaを現行の36シナリオ・3 Judge条件で追加評価する独立shard
+  - 対象、OpenAIユーザー役、OpenAI Judgeは通常Responses APIを使用する
+  - Gemini JudgeはGemini Batch API、Claude JudgeはAnthropic Message Batches APIを使用する
+  - 対象2モデルは主トラックの最小Reasoning noneへ固定する

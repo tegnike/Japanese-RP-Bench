@@ -31,6 +31,8 @@ test("server-renders the benchmark dashboard", async () => {
   const html = await response.text();
   assert.match(html, /<title>Japanese-RP-Bench v2 — 最新ベンチマーク<\/title>/i);
   assert.match(html, /EXPLORE THE RESULTS/);
+  assert.match(html, /GPT-5\.6 Luna/);
+  assert.match(html, /GPT-5\.6 Terra/);
   assert.match(html, /最新ベンチマーク結果/);
   assert.match(html, /GPT-5\.4 mini/);
   assert.match(html, /Claude Haiku 4\.5/);
@@ -43,7 +45,7 @@ test("server-renders the benchmark dashboard", async () => {
   );
 });
 
-test("ships 13 official models and one Fable reference result", async () => {
+test("ships 15 official models and one Fable reference result", async () => {
   const data = await readFile(new URL("../app/data.ts", import.meta.url), "utf8");
   const dashboard = await readFile(
     new URL("../app/dashboard.tsx", import.meta.url),
@@ -54,13 +56,13 @@ test("ships 13 official models and one Fable reference result", async () => {
     "utf8",
   );
 
-  assert.match(data, /modelCount:\s*13/);
+  assert.match(data, /modelCount:\s*15/);
   assert.match(data, /referenceModelCount:\s*1/);
   assert.match(data, /scenariosPerModel:\s*36/);
   assert.match(data, /judgeCount:\s*3/);
-  assert.equal((data.match(/\n\s+rank:\s+\d+,/g) ?? []).length, 13);
+  assert.equal((data.match(/\n\s+rank:\s+\d+,/g) ?? []).length, 15);
   assert.equal((data.match(/\n\s+rank:\s+null,/g) ?? []).length, 1);
-  assert.equal((data.match(/\n\s+summary:\s+[\d.]+,/g) ?? []).length, 14);
+  assert.equal((data.match(/\n\s+summary:\s+[\d.]+,/g) ?? []).length, 16);
   assert.match(dashboard, /metricKeys\.map/);
   assert.match(
     dashboard,

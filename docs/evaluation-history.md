@@ -7,6 +7,8 @@
 - [正式計測プロトコル](benchmark-v2-production-protocol.md): 現在の固定条件と再現手順
 - [2026-07-25 Claude Fable 5追加評価](claude-fable-5-results-2026-07-25.md):
   1件を5回拒否後に除外し、残り35/36を完了した参考結果
+- [2026-07-25 GPT-5.6 Terra・Luna追加評価](gpt-5.6-terra-luna-results-2026-07-25.md):
+  2モデルとも36/36を完了した追加正式結果
 - [2026-07-25 Claude Sonnet 5追加評価](claude-sonnet-5-results-2026-07-25.md):
   最新の追加正式結果
 - [2026-07-25 Claude Opus 5追加評価](claude-opus-5-results-2026-07-25.md):
@@ -16,14 +18,14 @@
 
 ## 現在の扱い
 
-2026-07-24に先行11モデル、2026-07-25にClaude Opus 5とClaude Sonnet 5が、同じ36シナリオと
-3 Judgeの正式条件を完了しました。READMEの表には、この完全性条件を満たした結果だけを
-掲載しています。Claude 5追加shardはユーザー指定により、OpenAI経路を同期、Anthropicと
-Gemini経路をBatchで実行しています。
+2026-07-24に先行11モデル、2026-07-25にClaude Opus 5、Claude Sonnet 5、GPT-5.6 Terra、
+GPT-5.6 Lunaが、同じ36シナリオと3 Judgeの正式条件を完了しました。READMEの表には、この
+完全性条件を満たした結果だけを掲載しています。2026-07-25の追加shardはユーザー指定により、
+OpenAI経路を同期、AnthropicとGemini経路をBatchで実行しています。
 
 Claude Fable 5は同条件のpilotに合格した。本文なしrefusalとなった1シナリオを同一条件で
 合計5回まで再試行し、すべて拒否されたためその1件だけを除外した。残り35/36の参考値は
-完了したが、完了済み13モデルの正式順位へは混ぜていない。
+完了したが、完了済み15モデルの正式順位へは混ぜていない。
 
 それ以前の結果は、設計判断、失敗原因、費用、実行方法を確認するための監査資料として保持
 しています。現在の順位へ混ぜたり、現行設定の推奨値として扱ったりしません。
@@ -107,6 +109,16 @@ effort既定`high`であるため、`thinking: disabled`と`output_config.effort
 除外し、残り35/36を3 Judgeで評価した。RP Balance 95.645、旧8指標平均4.493は参考値であり、
 正式順位対象外とした。完了範囲、未取得指標、費用、成果物hashは
 [2026-07-25 Claude Fable 5追加評価](claude-fable-5-results-2026-07-25.md)に保存している。
+
+### 2026-07-25: GPT-5.6 Terra・Luna追加評価
+
+`gpt-5.6-terra`と`gpt-5.6-luna`を同一shardで評価した。対象2モデル、GPT-5.4 miniユーザー役、
+OpenAI Judgeは通常Responses API、Gemini JudgeとClaude JudgeはBatch APIを使用した。
+両モデルとも36/36、対象生成327/327、各Judge 57/57を完了し、打ち切り・provider失敗は0だった。
+
+LunaはMajor 0、RP Summary 96.074で、15モデル統合時の正式順位1位となった。TerraはMajor 3、
+RP Summary 93.817で7位となった。条件、重大違反、費用、成果物hashは
+[2026-07-25 GPT-5.6 Terra・Luna追加評価](gpt-5.6-terra-luna-results-2026-07-25.md)に保存している。
 
 ## 履歴文書を読む際の注意
 
