@@ -1,10 +1,10 @@
 export type Provider = "openai" | "google" | "anthropic" | "opencode";
 
 export type ScoreKey =
-  | "balance"
-  | "core"
+  | "summary"
+  | "roleFidelity"
   | "quality"
-  | "stability"
+  | "personaStability"
   | "robustness"
   | "recovery";
 
@@ -15,18 +15,18 @@ export type ModelResult = {
   providerLabel: string;
   rank: number | null;
   reference?: boolean;
-  balance: number;
-  eligible: number;
+  summary: number;
+  majorFree: number;
   scenarios: number;
   major: number;
   legacyAverage: number;
-  metrics: Record<Exclude<ScoreKey, "balance">, number>;
+  metrics: Record<Exclude<ScoreKey, "summary">, number>;
   tracks: {
     adversarial: number;
     coreJa: number;
     custom: number;
     legacyBase: number;
-    longHorizon: number;
+    multiTurn: number;
   };
   legacyDimensions: Record<string, number>;
 };
@@ -46,25 +46,26 @@ export const metricMeta: Record<
   ScoreKey,
   { label: string; short: string; description: string }
 > = {
-  balance: {
-    label: "RP Balance",
-    short: "総合",
-    description: "Core・Quality・Stability・Robustness・Recoveryの単純平均",
+  summary: {
+    label: "RP Summary",
+    short: "RP要約",
+    description:
+      "Role Fidelity・Quality・Persona Stability・Robustness・Recoveryの単純平均。Qualityを通じて旧8指標を間接的に含む",
   },
-  core: {
-    label: "Core Fidelity",
-    short: "人格の核",
-    description: "キャラクターの核となるルールへの追従性",
+  roleFidelity: {
+    label: "Role Fidelity",
+    short: "役柄追従",
+    description: "人格、設定、関係性、知識境界、口調などのルールへの追従性",
   },
   quality: {
     label: "Conversation Quality",
     short: "会話品質",
     description: "自然さ、表現力、創造性、会話の楽しさ",
   },
-  stability: {
-    label: "Long-term Stability",
-    short: "長期安定",
-    description: "会話の序盤から終盤まで設定を維持できるか",
+  personaStability: {
+    label: "Persona Stability",
+    short: "人格安定",
+    description: "会話の進行に伴って人格・設定への追従度が低下しなかったか",
   },
   robustness: {
     label: "Robustness",
@@ -85,15 +86,15 @@ export const results: ModelResult[] = [
     provider: "openai",
     providerLabel: "OpenAI",
     rank: 1,
-    balance: 96.66,
-    eligible: 35,
+    summary: 96.66,
+    majorFree: 35,
     scenarios: 36,
     major: 1,
     legacyAverage: 4.425,
     metrics: {
-      core: 99.054,
+      roleFidelity: 99.054,
       quality: 86.328,
-      stability: 97.917,
+      personaStability: 97.917,
       robustness: 100,
       recovery: 100,
     },
@@ -102,7 +103,7 @@ export const results: ModelResult[] = [
       coreJa: 100,
       custom: 100,
       legacyBase: 99,
-      longHorizon: 98.333,
+      multiTurn: 98.333,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.633,
@@ -121,15 +122,15 @@ export const results: ModelResult[] = [
     provider: "openai",
     providerLabel: "OpenAI",
     rank: 2,
-    balance: 95.97,
-    eligible: 35,
+    summary: 95.97,
+    majorFree: 35,
     scenarios: 36,
     major: 1,
     legacyAverage: 4.455,
     metrics: {
-      core: 95.718,
+      roleFidelity: 95.718,
       quality: 86.91,
-      stability: 97.222,
+      personaStability: 97.222,
       robustness: 100,
       recovery: 100,
     },
@@ -138,7 +139,7 @@ export const results: ModelResult[] = [
       coreJa: 100,
       custom: 100,
       legacyBase: 94.889,
-      longHorizon: 99.167,
+      multiTurn: 99.167,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.4,
@@ -157,15 +158,15 @@ export const results: ModelResult[] = [
     provider: "google",
     providerLabel: "Google",
     rank: 3,
-    balance: 95.101,
-    eligible: 35,
+    summary: 95.101,
+    majorFree: 35,
     scenarios: 36,
     major: 1,
     legacyAverage: 4.381,
     metrics: {
-      core: 95.833,
+      roleFidelity: 95.833,
       quality: 85.46,
-      stability: 94.213,
+      personaStability: 94.213,
       robustness: 100,
       recovery: 100,
     },
@@ -174,7 +175,7 @@ export const results: ModelResult[] = [
       coreJa: 100,
       custom: 100,
       legacyBase: 95,
-      longHorizon: 100,
+      multiTurn: 100,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.3,
@@ -193,15 +194,15 @@ export const results: ModelResult[] = [
     provider: "opencode",
     providerLabel: "OpenCode Go",
     rank: 4,
-    balance: 93.691,
-    eligible: 35,
+    summary: 93.691,
+    majorFree: 35,
     scenarios: 36,
     major: 2,
     legacyAverage: 4.403,
     metrics: {
-      core: 95.532,
+      roleFidelity: 95.532,
       quality: 85.699,
-      stability: 97.639,
+      personaStability: 97.639,
       robustness: 93.75,
       recovery: 95.833,
     },
@@ -210,7 +211,7 @@ export const results: ModelResult[] = [
       coreJa: 93.75,
       custom: 100,
       legacyBase: 95.333,
-      longHorizon: 95,
+      multiTurn: 95,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.422,
@@ -229,15 +230,15 @@ export const results: ModelResult[] = [
     provider: "anthropic",
     providerLabel: "Anthropic",
     rank: 5,
-    balance: 95.559,
-    eligible: 34,
+    summary: 95.559,
+    majorFree: 34,
     scenarios: 36,
     major: 2,
     legacyAverage: 4.507,
     metrics: {
-      core: 95.278,
+      roleFidelity: 95.278,
       quality: 88.537,
-      stability: 93.981,
+      personaStability: 93.981,
       robustness: 100,
       recovery: 100,
     },
@@ -246,7 +247,7 @@ export const results: ModelResult[] = [
       coreJa: 100,
       custom: 100,
       legacyBase: 94.333,
-      longHorizon: 100,
+      multiTurn: 100,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.4,
@@ -265,15 +266,15 @@ export const results: ModelResult[] = [
     provider: "opencode",
     providerLabel: "OpenCode Go",
     rank: 6,
-    balance: 90.861,
-    eligible: 34,
+    summary: 90.861,
+    majorFree: 34,
     scenarios: 36,
     major: 3,
     legacyAverage: 4.107,
     metrics: {
-      core: 93.383,
+      roleFidelity: 93.383,
       quality: 79.786,
-      stability: 87.384,
+      personaStability: 87.384,
       robustness: 93.75,
       recovery: 100,
     },
@@ -282,7 +283,7 @@ export const results: ModelResult[] = [
       coreJa: 95.833,
       custom: 97.619,
       legacyBase: 92.444,
-      longHorizon: 99.167,
+      multiTurn: 99.167,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.389,
@@ -301,15 +302,15 @@ export const results: ModelResult[] = [
     provider: "google",
     providerLabel: "Google",
     rank: 7,
-    balance: 89.49,
-    eligible: 32,
+    summary: 89.49,
+    majorFree: 32,
     scenarios: 36,
     major: 10,
     legacyAverage: 4.374,
     metrics: {
-      core: 94.12,
+      roleFidelity: 94.12,
       quality: 85.045,
-      stability: 93.287,
+      personaStability: 93.287,
       robustness: 75,
       recovery: 100,
     },
@@ -318,7 +319,7 @@ export const results: ModelResult[] = [
       coreJa: 100,
       custom: 100,
       legacyBase: 93.444,
-      longHorizon: 85,
+      multiTurn: 85,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.211,
@@ -337,15 +338,15 @@ export const results: ModelResult[] = [
     provider: "opencode",
     providerLabel: "OpenCode Go",
     rank: 8,
-    balance: 94.216,
-    eligible: 31,
+    summary: 94.216,
+    majorFree: 31,
     scenarios: 36,
     major: 5,
     legacyAverage: 4.347,
     metrics: {
-      core: 93.38,
+      roleFidelity: 93.38,
       quality: 84.877,
-      stability: 92.824,
+      personaStability: 92.824,
       robustness: 100,
       recovery: 100,
     },
@@ -354,7 +355,7 @@ export const results: ModelResult[] = [
       coreJa: 100,
       custom: 100,
       legacyBase: 92.111,
-      longHorizon: 98.333,
+      multiTurn: 98.333,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.1,
@@ -373,15 +374,15 @@ export const results: ModelResult[] = [
     provider: "opencode",
     providerLabel: "OpenCode Go",
     rank: 9,
-    balance: 93.206,
-    eligible: 31,
+    summary: 93.206,
+    majorFree: 31,
     scenarios: 36,
     major: 5,
     legacyAverage: 4.109,
     metrics: {
-      core: 91.782,
+      roleFidelity: 91.782,
       quality: 79.458,
-      stability: 94.792,
+      personaStability: 94.792,
       robustness: 100,
       recovery: 100,
     },
@@ -390,7 +391,7 @@ export const results: ModelResult[] = [
       coreJa: 97.916,
       custom: 100,
       legacyBase: 90.444,
-      longHorizon: 95,
+      multiTurn: 95,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.045,
@@ -409,15 +410,15 @@ export const results: ModelResult[] = [
     provider: "opencode",
     providerLabel: "OpenCode Go",
     rank: 10,
-    balance: 90.637,
-    eligible: 31,
+    summary: 90.637,
+    majorFree: 31,
     scenarios: 36,
     major: 5,
     legacyAverage: 3.879,
     metrics: {
-      core: 81.782,
+      roleFidelity: 81.782,
       quality: 74.877,
-      stability: 96.528,
+      personaStability: 96.528,
       robustness: 100,
       recovery: 100,
     },
@@ -426,7 +427,7 @@ export const results: ModelResult[] = [
       coreJa: 97.916,
       custom: 100,
       legacyBase: 78.333,
-      longHorizon: 98.333,
+      multiTurn: 98.333,
     },
     legacyDimensions: {
       "Roleplay Adherence": 3.811,
@@ -445,15 +446,15 @@ export const results: ModelResult[] = [
     provider: "anthropic",
     providerLabel: "Anthropic",
     rank: 11,
-    balance: 92.984,
-    eligible: 29,
+    summary: 92.984,
+    majorFree: 29,
     scenarios: 36,
     major: 7,
     legacyAverage: 4.29,
     metrics: {
-      core: 92.593,
+      roleFidelity: 92.593,
       quality: 83.669,
-      stability: 88.657,
+      personaStability: 88.657,
       robustness: 100,
       recovery: 100,
     },
@@ -462,7 +463,7 @@ export const results: ModelResult[] = [
       coreJa: 100,
       custom: 100,
       legacyBase: 91.111,
-      longHorizon: 100,
+      multiTurn: 100,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.078,
@@ -481,15 +482,15 @@ export const results: ModelResult[] = [
     provider: "opencode",
     providerLabel: "OpenCode Go",
     rank: 12,
-    balance: 87.561,
-    eligible: 29,
+    summary: 87.561,
+    majorFree: 29,
     scenarios: 36,
     major: 7,
     legacyAverage: 4.096,
     metrics: {
-      core: 85.516,
+      roleFidelity: 85.516,
       quality: 79.039,
-      stability: 93.042,
+      personaStability: 93.042,
       robustness: 84.375,
       recovery: 95.833,
     },
@@ -498,7 +499,7 @@ export const results: ModelResult[] = [
       coreJa: 95.834,
       custom: 97.619,
       legacyBase: 83.333,
-      longHorizon: 95,
+      multiTurn: 95,
     },
     legacyDimensions: {
       "Roleplay Adherence": 3.767,
@@ -517,15 +518,15 @@ export const results: ModelResult[] = [
     provider: "anthropic",
     providerLabel: "Anthropic",
     rank: 13,
-    balance: 90.906,
-    eligible: 25,
+    summary: 90.906,
+    majorFree: 25,
     scenarios: 36,
     major: 16,
     legacyAverage: 4.058,
     metrics: {
-      core: 87.272,
+      roleFidelity: 87.272,
       quality: 78.464,
-      stability: 90.88,
+      personaStability: 90.88,
       robustness: 97.916,
       recovery: 100,
     },
@@ -534,7 +535,7 @@ export const results: ModelResult[] = [
       coreJa: 97.916,
       custom: 100,
       legacyBase: 85,
-      longHorizon: 98.333,
+      multiTurn: 98.333,
     },
     legacyDimensions: {
       "Roleplay Adherence": 3.467,
@@ -554,15 +555,15 @@ export const results: ModelResult[] = [
     providerLabel: "Anthropic",
     rank: null,
     reference: true,
-    balance: 95.645,
-    eligible: 31,
+    summary: 95.645,
+    majorFree: 31,
     scenarios: 35,
     major: 4,
     legacyAverage: 4.493,
     metrics: {
-      core: 93.714,
+      roleFidelity: 93.714,
       quality: 88.082,
-      stability: 96.429,
+      personaStability: 96.429,
       robustness: 100,
       recovery: 100,
     },
@@ -571,7 +572,7 @@ export const results: ModelResult[] = [
       coreJa: 100,
       custom: 100,
       legacyBase: 92.414,
-      longHorizon: 100,
+      multiTurn: 100,
     },
     legacyDimensions: {
       "Roleplay Adherence": 4.31,
@@ -587,4 +588,4 @@ export const results: ModelResult[] = [
 ];
 
 export const getScore = (result: ModelResult, key: ScoreKey) =>
-  key === "balance" ? result.balance : result.metrics[key];
+  key === "summary" ? result.summary : result.metrics[key];

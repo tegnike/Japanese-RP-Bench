@@ -22,10 +22,10 @@ const providerOptions: { value: "all" | Provider; label: string }[] = [
 
 const metricEntries = (
   result: ModelResult,
-): [Exclude<ScoreKey, "balance">, number][] => [
-  ["core", result.metrics.core],
+): [Exclude<ScoreKey, "summary">, number][] => [
+  ["roleFidelity", result.metrics.roleFidelity],
   ["quality", result.metrics.quality],
-  ["stability", result.metrics.stability],
+  ["personaStability", result.metrics.personaStability],
   ["robustness", result.metrics.robustness],
   ["recovery", result.metrics.recovery],
 ];
@@ -35,7 +35,7 @@ const trackLabels: Record<keyof ModelResult["tracks"], string> = {
   coreJa: "通常会話",
   custom: "カスタム人格",
   legacyBase: "従来30設定",
-  longHorizon: "長期会話",
+  multiTurn: "複数ターン",
 };
 
 const legacyLabels: Record<string, string> = {
@@ -96,17 +96,17 @@ function ModelDetail({
             {model.providerLabel}
           </span>
         </div>
-        <div className="balance-orb">
-          <strong>{model.balance.toFixed(1)}</strong>
-          <span>RP Balance</span>
+        <div className="summary-orb">
+          <strong>{model.summary.toFixed(1)}</strong>
+          <span>RP Summary</span>
         </div>
       </div>
 
       <div className="gate-grid">
         <div>
-          <span>適格シナリオ</span>
+          <span>重大違反なし</span>
           <strong>
-            {model.eligible}
+            {model.majorFree}
             <small> / {model.scenarios}</small>
           </strong>
         </div>
@@ -130,7 +130,7 @@ function ModelDetail({
         <div className="section-heading">
           <div>
             <span className="eyebrow">5 AXES</span>
-            <h3>人格パフォーマンス</h3>
+            <h3>5つの評価指標</h3>
           </div>
           <div className="axes-actions">
             <p>
@@ -203,18 +203,39 @@ function ModelDetail({
         <div className="section-heading">
           <div>
             <span className="eyebrow">SCENARIO TYPES</span>
-            <h3>シナリオ種別ごとの人格維持度</h3>
+            <h3>シナリオ種別ごとの役柄追従度</h3>
           </div>
         </div>
         <div className="track-grid">
           {(Object.entries(model.tracks) as [keyof ModelResult["tracks"], number][]).map(
-            ([key, value]) => (
-              <div className="track-card" key={key}>
-                <span>{trackLabels[key]}</span>
-                <strong>{value.toFixed(1)}</strong>
-                <ScoreBar value={value} tone="cyan" compact />
-              </div>
-            ),
+            ([key, value]) => {
+              const comparison = compareModel?.tracks[key];
+              const difference = comparison === undefined ? null : value - comparison;
+              return (
+                <div className="track-row" key={key}>
+                  <span>{trackLabels[key]}</span>
+                  <div className="track-bars">
+                    <ScoreBar
+                      value={value}
+                      tone="violet"
+                      compact={Boolean(compareModel)}
+                    />
+                    {comparison !== undefined && (
+                      <ScoreBar value={comparison} tone="cyan" compact />
+                    )}
+                  </div>
+                  <div className="track-value-stack">
+                    <strong>{value.toFixed(1)}</strong>
+                    {difference !== null && (
+                      <small className={difference >= 0 ? "positive" : "negative"}>
+                        {difference >= 0 ? "+" : ""}
+                        {difference.toFixed(1)}
+                      </small>
+                    )}
+                  </div>
+                </div>
+              );
+            },
           )}
         </div>
       </section>
@@ -227,13 +248,34 @@ function ModelDetail({
           </div>
         </div>
         <div className="legacy-list">
-          {Object.entries(model.legacyDimensions).map(([label, value]) => (
-            <div className="legacy-row" key={label}>
-              <span>{legacyLabels[label] ?? label}</span>
-              <ScoreBar value={value * 20} tone="lime" compact />
-              <strong>{value.toFixed(2)}</strong>
-            </div>
-          ))}
+          {Object.entries(model.legacyDimensions).map(([label, value]) => {
+            const comparison = compareModel?.legacyDimensions[label];
+            const difference = comparison === undefined ? null : value - comparison;
+            return (
+              <div className="legacy-row" key={label}>
+                <span>{legacyLabels[label] ?? label}</span>
+                <div className="legacy-bars">
+                  <ScoreBar
+                    value={value * 20}
+                    tone="violet"
+                    compact={Boolean(compareModel)}
+                  />
+                  {comparison !== undefined && (
+                    <ScoreBar value={comparison * 20} tone="cyan" compact />
+                  )}
+                </div>
+                <div className="legacy-value-stack">
+                  <strong>{value.toFixed(2)}</strong>
+                  {difference !== null && (
+                    <small className={difference >= 0 ? "positive" : "negative"}>
+                      {difference >= 0 ? "+" : ""}
+                      {difference.toFixed(2)}
+                    </small>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
     </aside>
@@ -241,7 +283,7 @@ function ModelDetail({
 }
 
 export function Dashboard() {
-  const [metric, setMetric] = useState<ScoreKey>("balance");
+  const [metric, setMetric] = useState<ScoreKey>("summary");
   const [provider, setProvider] = useState<"all" | Provider>("all");
   const [selectedId, setSelectedId] = useState(results[0].id);
   const [compareId, setCompareId] = useState(results[1].id);

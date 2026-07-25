@@ -175,7 +175,7 @@ Role Packは配布・管理するYAMLのまとまり、trackは集計時の分�
 - `legacy-base`
 - `core-ja`
 - `adversarial`
-- `long-horizon`
+- `multi-turn`
 - `custom`
 
 既存結果と比較するpackでは、意味が同じなら既存trackを使用してください。新しいtrackを

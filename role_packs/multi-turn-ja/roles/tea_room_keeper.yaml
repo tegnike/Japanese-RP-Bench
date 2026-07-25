@@ -30,7 +30,7 @@ rules:
     severity: major
     tags: [relationship, stability]
   - id: keeper.memory.conversation_facts
-    description: 会話内で明示された好みと事実を長期にわたり正確に保持する
+    description: 会話内で明示された好みと事実を複数ターンにわたり正確に保持する
     method: judge
     severity: major
     tags: [conversation-memory, stability]

@@ -1,6 +1,6 @@
 # Japanese-RP-Bench v2 設計概要
 
-v2は旧版を置き換える別ベンチではなく、元の30ロール・10往復・従来8指標をBaseとして完全に含む拡張版です。同じ会話に「指定されたキャラクターの核を維持できるか」という追加評価を重ね、追加Role PackはChallengeとして分けて表示します。
+v2は旧版を置き換える別ベンチではなく、元の30ロール・10往復・従来8指標をBaseとして完全に含む拡張版です。同じ会話に「指定された役柄と設定を維持できるか」という追加評価を重ね、追加Role PackはChallengeとして分けて表示します。
 
 > **正式計測の基準:** 11モデル計測で固定した全条件、停止判定、Batch wave、pilot、
 > 公開ゲート、一次資料は[`benchmark-v2-production-protocol.md`](benchmark-v2-production-protocol.md)
@@ -13,18 +13,18 @@ v2は旧版を置き換える別ベンチではなく、元の30ロール・10�
 
 評価対象を一つの総合点へ早期に潰さず、次を別々に出力します。
 
-- `core_fidelity_score`: 客観ルールとJudgeルールを合わせた追従性
+- `role_fidelity_score`: 客観ルールとJudgeルールを合わせた役柄追従性
 - `deterministic_compliance_score`: 一人称や禁止表現など、機械的に判定できる制約
 - `judge_fidelity_score`: 関係性、価値観、知識境界など、意味理解が必要な制約
 - `conversation_quality_score`: 自然さ、表現力、楽しさなど従来型の会話品質
-- `long_term_stability_score`: 対話序盤から終盤への追従性低下
+- `persona_stability_score`: 対話序盤から終盤への人格・設定追従性低下
 - `robustness_score`: 人格置換、偽記憶、代理行動などへの耐性
 - `recovery_score`: 攻撃や誤誘導後に元の人格へ戻れるか
 - `judge_disagreements`: Judge間で大きく判定が割れた原子ルール数
 
-重大ルールのfailが一つでもあれば`eligible_for_overall=false`になります。会話品質が高くても
-重大な人格逸脱を相殺しません。恣意的な重み付き総合点は定義せず、正式順位はEligible、
-Major violations、5つの主要v2指標の単純平均`RP Balance`、旧8指標平均の順で決めます。
+重大ルールのfailが一つでもあれば`major_violation_free=false`になります。会話品質が高くても
+重大な人格逸脱を相殺しません。恣意的な重み付き総合点は定義せず、正式順位はMajor-free、
+Major violations、5つの主要v2指標の単純平均`RP Summary`、旧8指標平均の順で決めます。
 
 各指標の算出式、値の読み方、BaseとChallengeの違いは
 [`metrics.md`](metrics.md)にまとめています。
@@ -48,7 +48,7 @@ role_packs/<pack>/
 
 - `core-ja`: 実務的メンター、ファンタジー案内人
 - `adversarial-ja`: 引用内命令、人格置換、ユーザー代理行動
-- `long-horizon-ja`: 12ターンでの人格、関係性、会話内事実の維持
+- `multi-turn-ja`: 12ターンでの人格、関係性、会話内事実の維持
 - `custom/nikechan`: AIニケちゃん固有の人格追従性
 
 現在のChallengeは次の6シナリオです。
@@ -98,7 +98,7 @@ Judge依頼には対象モデル名を含めません。Judge JSONLは各行に`
 
 - `legacy-2024-frozen`: リポジトリに保存された32モデル、960会話、3,840個のJudge評価をそのまま再集計する公開結果の凍結版
 - `legacy-base`: 元と同じ30ロール、システムプロンプト、10往復、従来8指標を現行モデルで実行し、同じ会話へ原子ルールとターン別追従度も追加する本体
-- Challenge tracks: 敵対的指示、長期対話、復帰、AIニケちゃんなど、元データにない能力を測る追加問題
+- Challenge tracks: 敵対的指示、複数ターン対話、復帰、AIニケちゃんなど、元データにない能力を測る追加問題
 
 凍結版はAPIを呼ばず、入力ファイルのSHA-256も記録します。
 
@@ -111,7 +111,7 @@ PYTHONPATH=src python -m japanese_rp_bench.v2.cli legacy-snapshot \
 
 元版はユーザー役にClaude 3.5 Sonnet（2024-06-20）、JudgeにGPT-4o、o1-mini、Claude 3.5 Sonnet、Gemini 1.5 Proを使用していました。`legacy-base`は30設定と採点rubricを保持しますが、ユーザー役とJudgeは現行の固定ensembleへ更新します。このため、旧公開値との比較は参考比較として表示し、プロトコル差も結果へ明記します。
 
-完全版の前に、Base 1ケースと12ターン長期シナリオを全対象モデルで生成するpilotを必須とします。さらに各対象についてBase Judgeと長期シナリオ最終ターンを3 Judgeで評価します。終了理由、Reasoning設定、4種類の要求上限、構造化JSON、Batch課金区分を検証し、全対象・全Judgeで打ち切りゼロの場合だけ`pilot-report.json`を合格にします。完全版の開始時には、設定、全Role Pack、Baseデータ、rubric、実装コードから作る`protocol_fingerprint`も照合するため、変更前のpilot合格票は流用できません。
+完全版の前に、Base 1ケースと12ターンシナリオを全対象モデルで生成するpilotを必須とします。さらに各対象についてBase Judgeと12ターンシナリオの最終ターンを3 Judgeで評価します。終了理由、Reasoning設定、4種類の要求上限、構造化JSON、Batch課金区分を検証し、全対象・全Judgeで打ち切りゼロの場合だけ`pilot-report.json`を合格にします。完全版の開始時には、設定、全Role Pack、Baseデータ、rubric、実装コードから作る`protocol_fingerprint`も照合するため、変更前のpilot合格票は流用できません。
 
 ```bash
 japanese-rp-bench-v2 pilot \
@@ -136,7 +136,7 @@ japanese-rp-bench-v2 run \
 
 ## Reasoning policy
 
-このベンチマークの**評価対象モデル（target）は、各APIで明示できる最小のReasoning設定**で実行する。これは「モデルが最大限考えた場合の能力上限」ではなく、追加の推論計算を極力使わない通常会話で、人格追従、自然さ、長期安定性、敵対的指示からの復帰を比較するためのプロトコルである。
+このベンチマークの**評価対象モデル（target）は、各APIで明示できる最小のReasoning設定**で実行する。これは「モデルが最大限考えた場合の能力上限」ではなく、追加の推論計算を極力使わない通常会話で、役柄追従、自然さ、人格安定性、敵対的指示からの復帰を比較するためのプロトコルである。
 
 Reasoning量は単なる実装詳細ではない。Snell et al.は、推論時に割り当てる計算量を増減すると同じモデルでもタスク性能が変化し、その効果は問題とモデルによって異なることを示している。このため、Reasoning設定が異なるモデルの点数をそのまま比較すると、モデル差に加えてtest-time compute差が混入する。本ベンチでは、HELMが重視する「同一シナリオ・指標を標準化された条件で比較する」という考え方を参考に、対象モデルへ与える推論余裕を各APIの最小値へ固定し、設定値とreasoning tokenを成果物へ記録する。
 

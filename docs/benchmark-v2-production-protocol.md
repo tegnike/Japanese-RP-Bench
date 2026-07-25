@@ -37,7 +37,7 @@ DeepSeek V4 Proを中心に文の途中で終了する返答が確認された�
 ### 2.1 評価トラック
 
 - **Base**: フォーク元と同じSFW 30設定、各10往復、従来8指標
-- **Base追加評価**: 同じ会話へ原子ルール、ターン別追従度、長期安定性を追加
+- **Base追加評価**: 同じ会話へ原子ルール、ターン別追従度、人格安定性を追加
 - **Challenge**: 4種類のRole Pack、6シナリオ、計27ターン
 - **2024 frozen**: 保存済み旧32モデル結果の再集計。現行モデルとの比較ではプロトコル差を明記
 
@@ -49,8 +49,8 @@ DeepSeek V4 Proを中心に文の途中で終了する返答が確認された�
 ### 2.2 出力する評価軸
 
 - 従来8指標は1〜5の平均として保持する
-- v2はCore fidelity、Quality、Stability、Robustness、Recoveryを別々に出す
-- Major violationsと`eligible_for_overall`を別に出す
+- v2はRole Fidelity、Quality、Persona Stability、Robustness、Recoveryを別々に出す
+- Major violationsと`major_violation_free`を別に出す
 - 恣意的な重み付き総合点は定義せず、重大違反ゲートを優先した透明な正式順位を定義する
 - BaseとChallengeを混同せず、該当シナリオのマクロ平均を使う
 
@@ -321,7 +321,7 @@ pilotまたは本実行は、設定された全providerの資格情報を最初�
 
 - Base: case ID `0`、10往復
 - Challenge: `tea_room_twelve_turns`、12ターン
-- Judge: 各対象についてBase全体を1回、長期シナリオ最終ターンを3 Judgeで評価
+- Judge: 各対象についてBase全体を1回、12ターンシナリオ最終ターンを3 Judgeで評価
 
 設定ファイルごとの予定呼び出し数は次の通り。
 
@@ -427,7 +427,7 @@ Gemini再置換には約`$8.53`の追加を見込み、従来の$25上限を超�
 - truncation、終了理由不明、指紋不一致、未解決Batchが0件
 - 各モデルの件数、usage、Reasoning、上限、Batch区分を集計できる
 - Base従来8指標とv2指標を別々に表示する
-- RP Balanceと順位規則を表示し、個別指標も省略しない
+- RP Summaryと順位規則を表示し、個別指標も省略しない
 - 不完全実行を0点として順位へ混ぜない
 - 2024 frozen結果とはユーザー役、Judge、モデル時点が異なることを明記する
 - 旧384 token条件の表と新条件の表を混在させない

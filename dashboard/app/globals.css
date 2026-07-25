@@ -399,7 +399,7 @@ select {
   line-height: 1;
 }
 
-.balance-orb {
+.summary-orb {
   min-width: 84px;
   padding: 6px 10px;
   display: flex;
@@ -408,13 +408,13 @@ select {
   border-left: 1px solid var(--line);
 }
 
-.balance-orb strong {
+.summary-orb strong {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 18px;
   line-height: 1;
 }
 
-.balance-orb span {
+.summary-orb span {
   color: var(--muted);
   font-size: 10px;
   line-height: 1;
@@ -512,15 +512,10 @@ select {
 }
 
 .metric-row > span:first-child,
+.track-row > span:first-child,
 .legacy-row > span:first-child {
   color: #a1a5ae;
   font-size: 10px;
-}
-
-.legacy-row > strong {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  text-align: right;
 }
 
 .axes-actions {
@@ -537,23 +532,35 @@ select {
 }
 
 .metric-bars,
-.metric-value-stack {
+.track-bars,
+.legacy-bars,
+.metric-value-stack,
+.track-value-stack,
+.legacy-value-stack {
   display: flex;
   flex-direction: column;
 }
 
-.metric-bars {
+.metric-bars,
+.track-bars,
+.legacy-bars {
   gap: 3px;
 }
 
-.metric-value-stack {
+.metric-value-stack,
+.track-value-stack,
+.legacy-value-stack {
   align-items: flex-end;
   gap: 2px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .metric-value-stack strong,
-.metric-value-stack small {
+.metric-value-stack small,
+.track-value-stack strong,
+.track-value-stack small,
+.legacy-value-stack strong,
+.legacy-value-stack small {
   font-size: 10px;
   line-height: 1;
 }
@@ -593,33 +600,17 @@ select {
 }
 
 .track-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
-}
-
-.track-card {
-  min-width: 0;
-  padding: 6px 7px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  gap: clamp(8px, 1.2vh, 12px);
+}
+
+.track-row {
+  display: grid;
+  grid-template-columns: 112px 1fr 52px;
+  align-items: center;
+  gap: 9px;
   line-height: 1;
-}
-
-.track-card span {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.track-card strong {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
 }
 
 .comparison-legend {
@@ -667,7 +658,7 @@ select {
 
 .legacy-row {
   display: grid;
-  grid-template-columns: 112px 1fr 34px;
+  grid-template-columns: 112px 1fr 52px;
   align-items: center;
   gap: 9px;
 }
@@ -772,9 +763,6 @@ select {
     padding: 16px;
   }
 
-  .track-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
 }
 
 @media (max-width: 460px) {

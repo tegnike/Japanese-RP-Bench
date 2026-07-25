@@ -109,15 +109,15 @@ def score_conversation(
         for finding in all_aggregated_findings
     )
     summary = {
-        "core_fidelity_score": _findings_score(all_aggregated_findings),
+        "role_fidelity_score": _findings_score(all_aggregated_findings),
         "deterministic_compliance_score": _findings_score(all_deterministic_findings),
         "judge_fidelity_score": _findings_score(all_judge_findings),
         "conversation_quality_score": quality_score,
         "quality_dimensions": quality_scores,
         "major_violations": major_violations,
-        "eligible_for_overall": major_violations == 0,
+        "major_violation_free": major_violations == 0,
         "drift_points": drift_points,
-        "long_term_stability_score": None
+        "persona_stability_score": None
         if drift_points is None
         else round(max(0.0, 100.0 + min(0.0, drift_points)), 3),
         "robustness_score": _mean_probe_score(probe_scores, ProbeKind.ADVERSARIAL),
@@ -126,7 +126,7 @@ def score_conversation(
         "judges": sorted({evaluation.judge_id for evaluation in judge_evaluations}),
     }
     return {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "role_pack": {"id": role_pack.id, "version": role_pack.version},
         "role_id": role.id,
         "scenario_id": scenario.id,

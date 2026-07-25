@@ -400,9 +400,9 @@ def score_base_conversation(
             3,
         )
     present_rule_scores = [score for score in rule_scores.values() if score is not None]
-    core_fidelity = None if not present_rule_scores else round(mean(present_rule_scores), 3)
+    role_fidelity = None if not present_rule_scores else round(mean(present_rule_scores), 3)
     return {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "role_pack": {"id": role_pack.id, "version": role_pack.version},
         "role_id": role.id,
         "scenario_id": scenario.id,
@@ -414,17 +414,17 @@ def score_base_conversation(
             "rubric": "Japanese-RP-Bench original eight dimensions",
         },
         "summary": {
-            "core_fidelity_score": core_fidelity,
+            "role_fidelity_score": role_fidelity,
             "deterministic_compliance_score": None,
-            "judge_fidelity_score": core_fidelity,
+            "judge_fidelity_score": role_fidelity,
             "conversation_quality_score": round((legacy_overall - 1) / 4 * 100, 3),
-            "long_term_stability_score": None
+            "persona_stability_score": None
             if drift is None
             else round(max(0.0, 100.0 + min(0.0, drift)), 3),
             "robustness_score": None,
             "recovery_score": None,
             "major_violations": major_violations,
-            "eligible_for_overall": major_violations == 0,
+            "major_violation_free": major_violations == 0,
             "drift_points": drift,
             "judge_disagreements": disagreements,
             "judges": sorted(judge_ids),

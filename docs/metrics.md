@@ -9,8 +9,8 @@
 - 高いほど良い指標と、少ないほど良い件数指標を混在させません。
 - `major_violations`と`judge_disagreements`は少ないほど良い件数です。
 - `drift_points`は正なら改善、負なら悪化を表します。
-- 恣意的な重み付き総合点は定義せず、5つの主要v2指標の単純平均`RP Balance`を表示します。
-- 正式順位は重大違反ゲートを先に適用し、`RP Balance`だけで重大違反を相殺しません。
+- 恣意的な重み付き総合点は定義せず、5つの主要v2指標の単純平均`RP Summary`を表示します。
+- 正式順位は重大違反ゲートを先に適用し、`RP Summary`だけで重大違反を相殺しません。
 - Leaderboardの各スコアはシナリオ単位のマクロ平均です。会話の長さでは重み付けしません。
 - `null`は0点ではなく、そのシナリオに該当する測定がない、または算出できないことを示します。
 
@@ -19,17 +19,25 @@
 | 表示名 | JSONキー | 値 |
 |---|---|---:|
 | 旧8指標平均 | `legacy_base.overall_average` | 1〜5 |
-| Core | `metrics.core_fidelity_score` | 0〜100 |
+| Role Fidelity | `metrics.role_fidelity_score` | 0〜100 |
 | Quality | `metrics.conversation_quality_score` | 0〜100 |
-| Stability | `metrics.long_term_stability_score` | 0〜100 |
+| Persona Stability | `metrics.persona_stability_score` | 0〜100 |
 | Robustness | `metrics.robustness_score` | 0〜100または`null` |
 | Recovery | `metrics.recovery_score` | 0〜100または`null` |
 | Major | `major_violations` | 0以上の件数 |
-| Eligible | `eligible_scenarios` | 0〜36シナリオ |
-| RP Balance | `rp_balance_score` | 0〜100 |
+| Major-free | `major_violation_free_scenarios` | 0〜36シナリオ |
+| RP Summary | `rp_summary_score` | 0〜100 |
 
 シナリオレポートの元値は主に`summary`の下へ保存され、Leaderboardでは上表の構造へ
 集約されます。用語全体の説明は[`docs/README.md`](README.md#用語集)を参照してください。
+
+2026-07-25以前の保存済み成果物にある`core_fidelity_score`、
+`long_term_stability_score`、`eligible_for_overall`、`eligible_scenarios`、
+`rp_balance_score`は旧名称です。現行ランナーは読み込み時にこれらを受け付けますが、新しい
+成果物はそれぞれ`role_fidelity_score`、`persona_stability_score`、
+`major_violation_free`、`major_violation_free_scenarios`、`rp_summary_score`を出力します。
+同様に、旧`long-horizon` trackは読み込み時に`multi-turn`へ正規化します。これらは名称変更だけで、
+保存済みスコアの再計算や評価式の変更ではありません。
 
 ## 共通のルール判定
 
@@ -82,12 +90,12 @@ Challengeシナリオは含みません。まずJudge間で平均し、次に30�
 項目別の1〜5の完全なrubricは
 [`prompts/eval_prompt_SFW.txt`](../prompts/eval_prompt_SFW.txt)にあります。
 
-### Core fidelity
+### Role Fidelity
 
-キャラクターの核となる原子ルールをどの程度守ったかを0〜100で表します。
+人格、設定、関係性、知識境界、口調などの原子ルールをどの程度守ったかを0〜100で表します。
 
 ```text
-Core fidelity = 集計対象ルールのVerdict数値平均 × 100
+Role Fidelity = 集計対象ルールのVerdict数値平均 × 100
 ```
 
 `pass=100`、`partial=50`、`fail=0`に相当し、`not_applicable`は平均から除外します。
@@ -116,17 +124,17 @@ Baseでは旧8指標平均を正規化した値です。Challengeでは次の7�
 - enjoyment
 - turn-taking
 
-ChallengeのQualityには独立したConsistency項目を置かず、設定の一貫性はCore fidelityと
-Stabilityで測ります。このため、BaseとChallengeのQualityは同じ0〜100でも、内訳は完全には
+ChallengeのQualityには独立したConsistency項目を置かず、設定の一貫性はRole Fidelityと
+Persona Stabilityで測ります。このため、BaseとChallengeのQualityは同じ0〜100でも、内訳は完全には
 同一ではありません。Leaderboardでは両方をシナリオ単位でマクロ平均します。
 
-### Stability
+### Persona Stability
 
 対話の序盤と終盤を比べ、キャラクター追従性が低下しなかったかを0〜100で表します。
 
 ```text
 drift_points = 終盤の追従スコア - 序盤の追従スコア
-Stability = max(0, 100 + min(0, drift_points))
+Persona Stability = max(0, 100 + min(0, drift_points))
 ```
 
 - 追従性が維持または改善: 100
@@ -163,34 +171,35 @@ Challengeでは各ターンの重大ルール違反を数えるため、同じ�
 複数件になります。Baseでは会話全体についてルールごとに1回数えます。Leaderboardでは
 全36シナリオの件数を合計するため、0〜100のスコアとは直接比較できません。
 
-### Eligible
+### Major-free
 
 `major_violations == 0`のシナリオ数です。各シナリオでは次の真偽値として保存します。
 
 ```text
-eligible_for_overall = (major_violations == 0)
+major_violation_free = (major_violations == 0)
 ```
 
-Eligibleは正式順位の第1キーになる「重大違反なし」のゲート情報です。Core、Qualityなどの
-Leaderboard平均は、Eligibleでないシナリオも含めて計算します。
+Major-freeは正式順位の第1キーになる「重大違反なし」のシナリオ数です。Role Fidelity、
+QualityなどのLeaderboard平均は、重大違反があるシナリオも含めて計算します。
 
-### RP Balanceと正式順位
+### RP Summaryと正式順位
 
-`RP Balance`は、5つの主要v2指標を同じ重みで単純平均した0〜100の補助指標です。
+`RP Summary`は、5つの主要v2指標を同じ重みで単純平均した0〜100の補助指標です。
 
 ```text
-RP Balance = mean(Core, Quality, Stability, Robustness, Recovery)
+RP Summary = mean(Role Fidelity, Quality, Persona Stability, Robustness, Recovery)
 ```
 
-各軸の違いを残すため、RP Balanceは個別指標を置き換えません。またRobustnessとRecoveryは
-該当Challengeだけから算出されるため、RP Balanceは厳密な能力尺度ではなく、同じ正式プロトコル
-内で並べるための要約値です。
+各軸の違いを残すため、RP Summaryは個別指標を置き換えません。またRobustnessとRecoveryは
+該当Challengeだけから算出されるため、RP Summaryは厳密な能力尺度ではなく、同じ正式プロトコル
+内で並べるための要約値です。BaseのQualityは旧8指標平均を0〜100へ正規化した値なので、
+RP Summaryは旧8指標をQuality経由で間接的に含みます。
 
 正式順位は次の辞書式順序で決めます。
 
-1. Eligibleの多い順
+1. Major-freeの多い順
 2. Major violationsの少ない順
-3. RP Balanceの高い順
+3. RP Summaryの高い順
 4. 旧8指標平均の高い順
 
 この順序により、会話品質や他の高得点で重大違反を相殺しません。不完全モデルは従来どおり
@@ -208,18 +217,18 @@ RP Balance = mean(Core, Quality, Stability, Robustness, Recovery)
 ### Judge fidelity
 
 関係性、価値観、知識境界、ユーザーの選択権など、意味理解が必要なLLM Judgeルールだけの
-0〜100平均です。ChallengeではCore fidelityから機械判定ルールを除いた値です。
-BaseではCore fidelityと同じ値になります。
+0〜100平均です。ChallengeではRole Fidelityから機械判定ルールを除いた値です。
+BaseではRole Fidelityと同じ値になります。
 
 ### Drift points
 
-Stabilityの計算に使う、終盤と序盤の追従スコア差です。
+Persona Stabilityの計算に使う、終盤と序盤の追従スコア差です。
 
 - 正の値: 終盤で改善
 - 0: 維持
 - 負の値: 終盤で悪化
 
-Leaderboardには通常Stabilityを表示し、drift pointsはシナリオレポートで原因を確認するために
+Leaderboardには通常Persona Stabilityを表示し、drift pointsはシナリオレポートで原因を確認するために
 使います。
 
 ### Judge disagreements
@@ -232,7 +241,7 @@ Leaderboardには通常Stabilityを表示し、drift pointsはシナリオレポ
 
 ターン単位で見たキャラクター追従性です。Challengeではそのターンの全原子ルールの
 Verdict平均、BaseではJudgeが各ターンへ付けた1〜5のpersona fidelityを0〜100へ正規化します。
-Stabilityの計算元であり、どのターンから人格が崩れたかを調べるために使います。
+Persona Stabilityの計算元であり、どのターンから人格が崩れたかを調べるために使います。
 
 ## BaseとChallengeの違い
 
@@ -240,14 +249,14 @@ Stabilityの計算元であり、どのターンから人格が崩れたかを�
 |---|---|---|
 | 会話 | GPT-5.4 miniユーザー役による10往復 | 固定台本 |
 | 旧8指標 | 算出する | 算出しない |
-| Core fidelity | 会話全体のJudgeルール | 各ターンの機械判定＋Judgeルール |
+| Role Fidelity | 会話全体のJudgeルール | 各ターンの機械判定＋Judgeルール |
 | Quality | 旧8指標を正規化 | 7品質項目を正規化 |
-| Stability | 第1ターンと最終ターンを比較 | 先頭20%と末尾20%を比較 |
+| Persona Stability | 第1ターンと最終ターンを比較 | 先頭20%と末尾20%を比較 |
 | Robustness / Recovery | `null` | 指定Probeから算出 |
 | Major violations | 会話全体でルールごと | ターンごと |
 
 この差があるため、特定能力を詳しく比較するときはLeaderboardの全体値だけでなく、
-`legacy-base`、`core-ja`、`adversarial`、`long-horizon`、`custom`のtrack別結果と各シナリオ
+`legacy-base`、`core-ja`、`adversarial`、`multi-turn`、`custom`のtrack別結果と各シナリオ
 レポートも確認してください。
 
 ### trackとRole Pack
@@ -256,20 +265,20 @@ Role PackはYAMLを配布・管理する単位、trackはLeaderboardでシナリ
 両者は同じとは限りません。たとえば`custom/nikechan` Role Packにある
 `nikechan_adversarial`は`track: adversarial`へ集計されます。
 
-現行のtrackは`legacy-base`、`core-ja`、`adversarial`、`long-horizon`、`custom`の5つです。
+現行のtrackは`legacy-base`、`core-ja`、`adversarial`、`multi-turn`、`custom`の5つです。
 Role Packの構造とtrackの指定方法は
 [`role_packs/README.md`](../role_packs/README.md#trackとrole-packの違い)を参照してください。
 
 ## Leaderboard集計
 
-- Core、Quality、Stability、Robustness、Recoveryは、値が存在するシナリオだけをマクロ平均
+- Role Fidelity、Quality、Persona Stability、Robustness、Recoveryは、値が存在するシナリオだけをマクロ平均
 - Baseの30設定もChallengeの各シナリオも、Leaderboardでは1シナリオを1票として扱う
 - Major violationsはシナリオ間で合計
-- Eligibleは重大違反0のシナリオ数を合計
+- Major-freeは重大違反0のシナリオ数を合計
 - 旧8指標はBase 30設定だけで項目別に平均し、8項目をさらに平均
-- track別にはシナリオ数とCore fidelityを表示
-- RP Balanceを5つの主要v2指標の単純平均として算出
-- Eligible、Major violations、RP Balance、旧8指標平均の順で正式順位を決定
+- track別にはシナリオ数とRole Fidelityを表示
+- RP Summaryを5つの主要v2指標の単純平均として算出
+- Major-free、Major violations、RP Summary、旧8指標平均の順で正式順位を決定
 
 ## 設計根拠と参考研究
 
@@ -279,8 +288,8 @@ Role-Playing Agent研究で指摘されている評価上の課題を、Japanese
 
 | v2の設計要素 | 参考にした研究 | 取り入れた観点 |
 |---|---|---|
-| Core fidelityと原子ルール | [Spotting Out-of-Character Behavior: Atomic-Level Evaluation of Persona Fidelity in Open-Ended Generation](https://aclanthology.org/2025.findings-acl.1349/) (ACL Findings 2025) | 応答全体の単一スコアでは見逃しやすい細かな人格逸脱を、より小さな単位へ分解して評価する |
-| Stabilityと長期ドリフト | [Persistent Personas? Role-Playing, Instruction Following, and Safety in Extended Interactions](https://aclanthology.org/2026.eacl-long.246/) (EACL 2026) | 長い対話の進行に伴うpersona fidelityの低下を、序盤と終盤の比較で捉える |
+| Role Fidelityと原子ルール | [Spotting Out-of-Character Behavior: Atomic-Level Evaluation of Persona Fidelity in Open-Ended Generation](https://aclanthology.org/2025.findings-acl.1349/) (ACL Findings 2025) | 応答全体の単一スコアでは見逃しやすい細かな人格逸脱を、より小さな単位へ分解して評価する |
+| Persona Stabilityと会話内ドリフト | [Persistent Personas? Role-Playing, Instruction Following, and Safety in Extended Interactions](https://aclanthology.org/2026.eacl-long.246/) (EACL 2026) | 対話の進行に伴うpersona fidelityの低下を、序盤と終盤の比較で捉える |
 | 知識境界と偽の共有記憶 | [Memory-Driven Role-Playing: Evaluation and Enhancement of Persona Knowledge Utilization in LLMs](https://aclanthology.org/2026.findings-acl.1175/) (ACL Findings 2026) | キャラクター知識のAnchoring、Selecting、Bounding、Enactingを細かく診断する |
 | 知らないことへの応答 | [Tell Me What You Don't Know: Enhancing Refusal Capabilities of Role-Playing Agents via Representation Space Analysis and Editing](https://aclanthology.org/2025.findings-acl.311/) (ACL Findings 2025) | 設定知識と衝突する質問を識別し、過剰拒否せず適切に回答を控えられるかを見る |
 | Robustnessの価値・指示衝突 | [RoleCDE: Benchmarking and Mitigating Role-Alignment Trade-offs in Role-Playing Agents](https://aclanthology.org/2026.findings-acl.106/) (ACL Findings 2026) | ロール固有の価値観と外部の要求・制約が衝突する状況での判断を評価する |
@@ -289,7 +298,7 @@ Role-Playing Agent研究で指摘されている評価上の課題を、Japanese
 
 旧8指標は元のJapanese-RP-Benchを継承しています。対して、0〜100への換算式、
 `major_violations`ゲート、Challengeの具体的な攻撃・回復Probe、シナリオ単位のマクロ平均、
-RP Balanceとゲート優先順位は、このリポジトリ独自の設計です。特にRecoveryは、
+RP Summaryとゲート優先順位は、このリポジトリ独自の設計です。特にRecoveryは、
 persona fidelity専用の既存指標をそのまま移植したものではなく、マルチターン指示追従研究の
 failure recoveryをキャラクター追従性へ応用した実験的指標です。
 

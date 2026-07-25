@@ -87,7 +87,7 @@ def nike_conversation() -> Conversation:
 
 
 class LeaderboardRankingTests(unittest.TestCase):
-    def test_major_violation_gate_precedes_unweighted_rp_balance(self) -> None:
+    def test_major_violation_gate_precedes_unweighted_rp_summary(self) -> None:
         def target(
             eligible: int,
             major: int,
@@ -95,14 +95,14 @@ class LeaderboardRankingTests(unittest.TestCase):
             legacy: float,
         ) -> dict:
             metric_names = (
-                "core_fidelity_score",
+                "role_fidelity_score",
                 "conversation_quality_score",
-                "long_term_stability_score",
+                "persona_stability_score",
                 "robustness_score",
                 "recovery_score",
             )
             return {
-                "eligible_scenarios": eligible,
+                "major_violation_free_scenarios": eligible,
                 "major_violations": major,
                 "metrics": dict(zip(metric_names, scores)),
                 "legacy_base": {"overall_average": legacy},
@@ -126,8 +126,27 @@ class LeaderboardRankingTests(unittest.TestCase):
                 "higher-balance-more-violations",
             ],
         )
-        self.assertEqual(targets["balance-tiebreak"]["rp_balance_score"], 95.0)
+        self.assertEqual(targets["balance-tiebreak"]["rp_summary_score"], 95.0)
         self.assertEqual(targets["balance-tiebreak"]["rank"], 1)
+
+    def test_ranking_accepts_pre_rename_metric_keys(self) -> None:
+        targets = {
+            "legacy-artifact": {
+                "eligible_scenarios": 36,
+                "major_violations": 0,
+                "metrics": {
+                    "core_fidelity_score": 90.0,
+                    "conversation_quality_score": 80.0,
+                    "long_term_stability_score": 100.0,
+                    "robustness_score": 90.0,
+                    "recovery_score": 100.0,
+                },
+                "legacy_base": {"overall_average": 4.0},
+            }
+        }
+
+        self.assertEqual(_apply_leaderboard_ranking(targets), ["legacy-artifact"])
+        self.assertEqual(targets["legacy-artifact"]["rp_summary_score"], 92.0)
 
 
 def judge_evaluations(role) -> list[JudgeEvaluation]:
@@ -169,7 +188,7 @@ class RolePackTests(unittest.TestCase):
         expected = {
             "core-ja": (2, 2),
             "adversarial-ja": (1, 1),
-            "long-horizon-ja": (1, 1),
+            "multi-turn-ja": (1, 1),
             "custom/nikechan": (1, 2),
         }
         for directory, counts in expected.items():
@@ -409,7 +428,12 @@ class ScoringTests(unittest.TestCase):
         )
         summary = report["summary"]
         self.assertGreater(summary["major_violations"], 0)
-        self.assertFalse(summary["eligible_for_overall"])
+        self.assertFalse(summary["major_violation_free"])
+        self.assertIn("role_fidelity_score", summary)
+        self.assertIn("persona_stability_score", summary)
+        self.assertNotIn("core_fidelity_score", summary)
+        self.assertNotIn("long_term_stability_score", summary)
+        self.assertNotIn("eligible_for_overall", summary)
         self.assertLess(summary["robustness_score"], 100)
         self.assertEqual(summary["recovery_score"], 100)
         self.assertNotIn("overall_score", summary)
@@ -452,7 +476,7 @@ class ScoringTests(unittest.TestCase):
             _score(str(pack_path), str(conversation_path), None, str(report_path))
             self.assertEqual(len(requests_path.read_text(encoding="utf-8").splitlines()), 3)
             report = json.loads(report_path.read_text(encoding="utf-8"))
-            self.assertEqual(report["schema_version"], "2.0")
+            self.assertEqual(report["schema_version"], "2.1")
 
 
 class ProviderTests(unittest.TestCase):
@@ -1772,7 +1796,7 @@ class BaseTrackTests(unittest.TestCase):
         ]
         report = score_base_conversation(pack, conversation, judgments)
         self.assertEqual(report["legacy"]["overall_average"], 4.0)
-        self.assertEqual(report["summary"]["core_fidelity_score"], 100.0)
+        self.assertEqual(report["summary"]["role_fidelity_score"], 100.0)
         self.assertEqual(report["summary"]["drift_points"], -25.0)
 
     def test_base_judge_accepts_fixed_turn_keys_and_string_scores(self) -> None:

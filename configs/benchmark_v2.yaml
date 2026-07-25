@@ -2,7 +2,7 @@ schema_version: "2.0"
 role_packs:
   - role_packs/core-ja
   - role_packs/adversarial-ja
-  - role_packs/long-horizon-ja
+  - role_packs/multi-turn-ja
   - role_packs/custom/nikechan
 evaluation:
   deterministic_checks: true

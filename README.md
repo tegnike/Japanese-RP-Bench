@@ -1,6 +1,6 @@
 # Japanese-RP-Bench v2
 
-日本語ロールプレイLLMの会話品質だけでなく、キャラクター設定への追従性、長期安定性、
+日本語ロールプレイLLMの会話品質だけでなく、役柄への追従性、人格安定性、
 人格置換への耐性、誤誘導後の復帰まで測定するベンチマークです。
 
 このリポジトリは[Aratako/Japanese-RP-Bench](https://github.com/Aratako/Japanese-RP-Bench)の
@@ -10,9 +10,9 @@
 
 ## v2で測るもの
 
-- `core_fidelity_score`: キャラクターの核となるルールへの追従性
+- `role_fidelity_score`: 人格、設定、関係性、知識境界、口調などのルールへの追従性
 - `conversation_quality_score`: 自然さ、表現力、創造性、会話の楽しさ
-- `long_term_stability_score`: 対話序盤から終盤までの設定維持
+- `persona_stability_score`: 対話の進行に伴う人格・設定追従度の低下
 - `robustness_score`: 人格置換、引用内命令、偽記憶、代理行動への耐性
 - `recovery_score`: 攻撃や誤誘導の後に元の人格へ戻れるか
 - `major_violations`: 人格の核に関わる重大ルール違反
@@ -39,8 +39,8 @@ Claude Fable 5も同じ条件でpilotに合格しました。Base 2ターン目�
 
 ### 結果ダッシュボード
 
-最新の正式結果は、同梱の[`dashboard`](dashboard)でグラフ表示できます。RP Balance、
-人格の核、会話品質、長期安定性、攻撃耐性、復帰力を切り替え、モデルごとのトラック別結果や
+最新の正式結果は、同梱の[`dashboard`](dashboard)でグラフ表示できます。RP Summary、
+役柄追従度、会話品質、人格安定性、攻撃耐性、復帰力を切り替え、モデルごとのトラック別結果や
 旧8指標の内訳まで確認できます。
 
 ```bash
@@ -49,13 +49,14 @@ npm install
 npm run dev
 ```
 
-`RP Balance`はCore、Quality、Stability、Robustness、Recoveryの単純平均です。正式順位は
-`Eligible`降順、`Major`昇順、`RP Balance`降順、最後に旧8指標平均降順で決めます。
-Majorは重大違反の総件数、Eligibleは重大違反がなかったシナリオ数です。
+`RP Summary`はRole Fidelity、Quality、Persona Stability、Robustness、Recoveryの単純平均です。
+BaseのQualityは旧8指標平均を正規化した値なので、RP Summaryは旧8指標を間接的に含みます。
+正式順位は`Major-free`降順、`Major`昇順、`RP Summary`降順、最後に旧8指標平均降順で決めます。
+Majorは重大違反の総件数、Major-freeは重大違反がなかったシナリオ数です。
 この順位は比較の入口として設けた便宜的な並びであり、モデルの絶対的な優劣を示すものでは
 ありません。実際の用途に合わせて、表中の各スコアとシナリオ別レポートも確認してください。
 
-| Rank | Target | RP Balance | Eligible | Major | 旧8指標平均 | Core | Quality | Stability | Robustness | Recovery |
+| Rank | Target | RP Summary | Major-free | Major | 旧8指標平均 | Role Fidelity | Quality | Persona Stability | Robustness | Recovery |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 1 | GPT-5.4 mini | 96.660 | 35/36 | 1 | 4.425 | 99.054 | 86.328 | 97.917 | 100.000 | 100.000 |
 | 2 | GPT-5.6 Sol | 95.970 | 35/36 | 1 | 4.455 | 95.718 | 86.910 | 97.222 | 100.000 | 100.000 |
@@ -74,7 +75,8 @@ Majorは重大違反の総件数、Eligibleは重大違反がなかったシナ�
 
 ※ Claude Fable 5は`legacy_case_01`の2ターン目で本文なしの`cyber` refusalが5回続いたため、
 この1シナリオだけ未取得・除外した。欠損元は1件だけだが、このBaseシナリオを集計対象にする
-RP Balance、Eligible、Major、旧8指標平均、Core、Quality、Stabilityは残り35/36シナリオ
+RP Summary、Major-free、Major、旧8指標平均、Role Fidelity、Quality、Persona Stabilityは
+残り35/36シナリオ
 （旧8指標平均は29/30設定）から計算した参考値となるため※を付けた。Challengeだけから計算する
 RobustnessとRecoveryは欠損の影響を受けない。正式順位は`-`としている。5回の拒否記録、
 除外方法、費用は
@@ -83,7 +85,7 @@ RobustnessとRecoveryは欠損の影響を受けない。正式順位は`-`と�
 ## 現在の評価プロトコル
 
 - Base: 元のSFWデータセット30設定 × 10往復 × 従来8指標
-- Base追加評価: 原子ルール、ターン別追従度、長期安定性
+- Base追加評価: 原子ルール、ターン別追従度、人格安定性
 - Challenge: 4種類のRole Pack、6シナリオ、計27ターン
 - ユーザー役: GPT-5.4 mini
 - Judge: GPT-5.4 mini、Gemini 3.5 Flash、Claude Haiku 4.5
@@ -156,7 +158,7 @@ OpenCode Go固有の接続方法は[`docs/opencode-go.md`](docs/opencode-go.md)�
 
 - `core-ja`: 実務的メンター、ファンタジー案内人
 - `adversarial-ja`: 引用内命令、人格置換、ユーザー代理行動
-- `long-horizon-ja`: 12ターンでの人格、関係性、会話内事実の維持
+- `multi-turn-ja`: 12ターンでの人格、関係性、会話内事実の維持
 - `custom/nikechan`: AIニケちゃん固有の人格追従性
 
 ```bash
@@ -175,8 +177,8 @@ Role Packの構造と作成方法は[`role_packs/README.md`](role_packs/README.m
 完了状態、実行費用、停止理由または重大違反、成果物とSHA-256を記録しています。先行11モデルの
 出典は[全11モデル完了記録](docs/benchmark-v2-production-status-2026-07-24.md)にあります。
 
-[指標定義](docs/metrics.md)では、Core、Quality、Stability、Robustness、Recovery、
-Major、Eligible、RP Balance、旧8指標について、意味、計算式、値の読み方、
+[指標定義](docs/metrics.md)では、Role Fidelity、Quality、Persona Stability、Robustness、Recovery、
+Major、Major-free、RP Summary、旧8指標について、意味、計算式、値の読み方、
 BaseとChallengeでの違いを説明しています。
 
 ### 設計と実行条件を確認する

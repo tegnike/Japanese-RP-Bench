@@ -35,7 +35,7 @@ test("server-renders the benchmark dashboard", async () => {
   assert.match(html, /GPT-5\.4 mini/);
   assert.match(html, /Claude Haiku 4\.5/);
   assert.match(html, /Claude Fable 5/);
-  assert.match(html, /RP Balance/);
+  assert.match(html, /RP Summary/);
   assert.match(html, /aria-label="表示する評価指標"/);
   assert.doesNotMatch(
     html,
@@ -60,13 +60,13 @@ test("ships 13 official models and one Fable reference result", async () => {
   assert.match(data, /judgeCount:\s*3/);
   assert.equal((data.match(/\n\s+rank:\s+\d+,/g) ?? []).length, 13);
   assert.equal((data.match(/\n\s+rank:\s+null,/g) ?? []).length, 1);
-  assert.equal((data.match(/\n\s+balance:\s+[\d.]+,/g) ?? []).length, 14);
+  assert.equal((data.match(/\n\s+summary:\s+[\d.]+,/g) ?? []).length, 14);
   assert.match(dashboard, /metricKeys\.map/);
   assert.match(
     dashboard,
     /getScore\(b, metric\) - getScore\(a, metric\)/,
   );
-  assert.doesNotMatch(dashboard, /metric === "balance" \? a\.rank/);
+  assert.doesNotMatch(dashboard, /metric === "summary" \? a\.rank/);
   assert.match(dashboard, /Object\.entries\(model\.tracks\)/);
   assert.match(dashboard, /Object\.entries\(model\.legacyDimensions\)/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);

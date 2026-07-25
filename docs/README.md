@@ -68,7 +68,7 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | 用語 | このリポジトリでの意味 |
 |---|---|
 | Base | フォーク元と同じSFW 30設定、各10往復、旧8指標を維持する評価部分 |
-| Challenge | Role Packで追加した、敵対的指示、長期維持、復帰などを測る追加シナリオ |
+| Challenge | Role Packで追加した、敵対的指示、複数ターン維持、復帰などを測る追加シナリオ |
 | 評価対象（target） | 能力を測られるモデル |
 | ユーザー役（user simulator） | Base会話で評価対象の相手を生成するモデル |
 | Judge | 会話や発話を指標・原子ルールに沿って採点する評価モデル |
@@ -90,9 +90,9 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | provider | OpenAI、Google、Anthropic、OpenCode Goなど、APIを提供する経路 |
 | transport | 同じモデル・設定を送る同期APIまたはBatch APIという通信方式 |
 | `incomplete` | 必須成果物が揃わず、0点ではなく順位対象外になった実行状態 |
-| Eligible | `major_violations == 0`だったシナリオ数。正式順位の第1キー |
+| Major-free | `major_violations == 0`だったシナリオ数。正式順位の第1キー |
 | Major | 重大ルールの`fail`件数を全シナリオで合計した値。少ないほど良い |
-| RP Balance | Core、Quality、Stability、Robustness、Recoveryの単純平均。順位用の補助表示 |
+| RP Summary | Role Fidelity、Quality、Persona Stability、Robustness、Recoveryの単純平均。順位用の補助表示。Qualityを通じて旧8指標を間接的に含む |
 | `ALL-11` | 2026-07-24の11モデル完了記録で使う、統合公開成果物の台帳ID |
 | `Claude 5 shard` | 2026-07-25に追加したClaude Opus 5またはSonnet 5単独の正式pilot・全量成果物 |
 | r3 / r6 / r7 | 同日の再実行を区別するローカルな反復番号。モデル性能上の意味はない |

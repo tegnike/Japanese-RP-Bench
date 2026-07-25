@@ -63,21 +63,25 @@ from japanese_rp_bench.v2.schemas import (
 
 LOGGER = logging.getLogger("japanese_rp_bench.v2.runner")
 SUMMARY_METRICS = (
-    "core_fidelity_score",
+    "role_fidelity_score",
     "deterministic_compliance_score",
     "judge_fidelity_score",
     "conversation_quality_score",
-    "long_term_stability_score",
+    "persona_stability_score",
     "robustness_score",
     "recovery_score",
 )
-RP_BALANCE_METRICS = (
-    "core_fidelity_score",
+RP_SUMMARY_METRICS = (
+    "role_fidelity_score",
     "conversation_quality_score",
-    "long_term_stability_score",
+    "persona_stability_score",
     "robustness_score",
     "recovery_score",
 )
+LEGACY_SUMMARY_METRIC_ALIASES = {
+    "role_fidelity_score": "core_fidelity_score",
+    "persona_stability_score": "long_term_stability_score",
+}
 EXPENSIVE_JUDGE_PROVIDERS = {"gemini", "anthropic"}
 RUN_FINGERPRINT_SCHEMA_VERSION = "1.0"
 FINGERPRINT_SOURCE_FILES = (
@@ -2486,27 +2490,40 @@ def _build_leaderboard(
         target_reports = [report for report in reports if report["target_model"] == target.id]
         metrics = {}
         for metric in SUMMARY_METRICS:
-            values = [report["summary"].get(metric) for report in target_reports]
+            values = [_summary_metric(report["summary"], metric) for report in target_reports]
             present = [float(value) for value in values if value is not None]
             metrics[metric] = None if not present else round(mean(present), 3)
         tracks: Dict[str, Dict[str, Any]] = {}
-        for track in sorted({str(report["track"]) for report in target_reports}):
-            track_reports = [report for report in target_reports if report["track"] == track]
+        normalized_tracks = {_normalized_track(report["track"]) for report in target_reports}
+        for track in sorted(normalized_tracks):
+            track_reports = [
+                report
+                for report in target_reports
+                if _normalized_track(report["track"]) == track
+            ]
             track_values = [
-                float(report["summary"]["core_fidelity_score"])
+                float(_summary_metric(report["summary"], "role_fidelity_score"))
                 for report in track_reports
-                if report["summary"]["core_fidelity_score"] is not None
+                if _summary_metric(report["summary"], "role_fidelity_score") is not None
             ]
             tracks[track] = {
                 "scenarios": len(track_reports),
-                "core_fidelity_score": None if not track_values else round(mean(track_values), 3),
+                "role_fidelity_score": None if not track_values else round(mean(track_values), 3),
             }
         targets[target.id] = {
             "provider": target.provider,
             "model": target.model,
             "scenarios": len(target_reports),
             "major_violations": sum(int(report["summary"]["major_violations"]) for report in target_reports),
-            "eligible_scenarios": sum(bool(report["summary"]["eligible_for_overall"]) for report in target_reports),
+            "major_violation_free_scenarios": sum(
+                bool(
+                    report["summary"].get(
+                        "major_violation_free",
+                        report["summary"].get("eligible_for_overall", False),
+                    )
+                )
+                for report in target_reports
+            ),
             "metrics": metrics,
             "tracks": tracks,
         }
@@ -2537,20 +2554,20 @@ def _build_leaderboard(
             usage["estimated_effective_cost_usd"], 6
         )
     return {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "run_fingerprint": run_fingerprint,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "targets": targets,
         "ranking": ranking,
         "ranking_method": {
-            "name": "eligible-major-rp-balance",
+            "name": "major-free-major-rp-summary",
             "order": [
-                "eligible_scenarios descending",
+                "major_violation_free_scenarios descending",
                 "major_violations ascending",
-                "rp_balance_score descending",
+                "rp_summary_score descending",
                 "legacy_base.overall_average descending",
             ],
-            "rp_balance_metrics": list(RP_BALANCE_METRICS),
+            "rp_summary_metrics": list(RP_SUMMARY_METRICS),
         },
         "usage_by_model": usage_by_model,
         "estimated_list_cost_usd": round(
@@ -2562,8 +2579,9 @@ def _build_leaderboard(
             6,
         ),
         "notes": [
-            "RP Balance is the unweighted mean of the five primary v2 score axes.",
-            "Ranking applies the major-violation gate before RP Balance; it is not a weighted overall score.",
+            "RP Summary is the unweighted mean of the five primary v2 score axes.",
+            "Base Conversation Quality is derived from Legacy 8, so RP Summary includes Legacy 8 indirectly.",
+            "Ranking applies the major-violation gate before RP Summary; it is not a weighted overall score.",
             "List costs do not account for discounts; effective costs apply the 50% "
             "OpenAI/Gemini/Anthropic Batch API multiplier recorded on each call.",
             "Effective costs do not account for free tiers or data-sharing incentives.",
@@ -2574,8 +2592,8 @@ def _build_leaderboard(
 def _apply_leaderboard_ranking(targets: Dict[str, Dict[str, Any]]) -> List[str]:
     for target in targets.values():
         metrics = target["metrics"]
-        values = [metrics.get(metric) for metric in RP_BALANCE_METRICS]
-        target["rp_balance_score"] = (
+        values = [_summary_metric(metrics, metric) for metric in RP_SUMMARY_METRICS]
+        target["rp_summary_score"] = (
             None
             if any(value is None for value in values)
             else round(mean(float(value) for value in values), 3)
@@ -2583,12 +2601,17 @@ def _apply_leaderboard_ranking(targets: Dict[str, Dict[str, Any]]) -> List[str]:
 
     def rank_key(target_id: str) -> Tuple[float, float, float, float]:
         target = targets[target_id]
-        rp_balance = target.get("rp_balance_score")
+        rp_summary = target.get("rp_summary_score", target.get("rp_balance_score"))
         legacy_average = target.get("legacy_base", {}).get("overall_average")
         return (
-            -float(target["eligible_scenarios"]),
+            -float(
+                target.get(
+                    "major_violation_free_scenarios",
+                    target.get("eligible_scenarios", 0),
+                )
+            ),
             float(target["major_violations"]),
-            -(float(rp_balance) if rp_balance is not None else -1.0),
+            -(float(rp_summary) if rp_summary is not None else -1.0),
             -(float(legacy_average) if legacy_average is not None else -1.0),
         )
 
@@ -2596,6 +2619,18 @@ def _apply_leaderboard_ranking(targets: Dict[str, Dict[str, Any]]) -> List[str]:
     for rank, target_id in enumerate(ranking, start=1):
         targets[target_id]["rank"] = rank
     return ranking
+
+
+def _summary_metric(summary: Mapping[str, Any], metric: str) -> Any:
+    if metric in summary:
+        return summary[metric]
+    legacy_key = LEGACY_SUMMARY_METRIC_ALIASES.get(metric)
+    return None if legacy_key is None else summary.get(legacy_key)
+
+
+def _normalized_track(track: Any) -> str:
+    value = str(track)
+    return "multi-turn" if value == "long-horizon" else value
 
 
 def _accumulate_usage(

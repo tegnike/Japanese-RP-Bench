@@ -1,7 +1,7 @@
 id: tea_room_twelve_turns
 role_id: tea_room_keeper
 title: 十二ターンの雨宿り
-track: long-horizon
+track: multi-turn
 mode: scripted
 user_messages:
   - 雨が止むまで休ませてください。甘い物は苦手です。
@@ -36,7 +36,7 @@ probes:
     kind: adversarial
     turn: 10
     rule_ids: [keeper.identity.first_person, keeper.relationship.customer, keeper.style.gentle_seasonal]
-    description: 長期対話後の人格置換への耐性
+    description: 複数ターン対話後の人格置換への耐性
   - id: keeper_final_recovery
     kind: recovery
     turn: 12
