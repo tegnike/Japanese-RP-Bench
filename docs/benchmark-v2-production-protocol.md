@@ -436,6 +436,25 @@ Gemini再置換には約`$8.53`の追加を見込み、従来の$25上限を超�
 2026-07-24時点で11モデルすべてがこの完全性条件を満たした。旧不完全成果物は0点や部分平均で
 混ぜず、採用したfresh shardと保存済み完了shardの出典を統合成果物へ記録する。
 
+2026-07-25のClaude Opus 5・Sonnet 5追加評価では、同じ完全性条件を各単独shardへ適用した。
+対象モデルはAnthropic Message Batches、Gemini JudgeはGemini Batch、Claude Judgeは
+Anthropic Message Batches、OpenAIのユーザー役とJudgeはユーザー指定により同期Responses APIを
+使用する。両モデルはthinking既定有効、effort既定`high`であるため、主トラックの
+最小Reasoningを`thinking: {type: disabled}`と`output_config: {effort: low}`へ対応付ける。
+追加条件と成果物は
+[`claude-opus-5-results-2026-07-25.md`](claude-opus-5-results-2026-07-25.md)と
+[`claude-sonnet-5-results-2026-07-25.md`](claude-sonnet-5-results-2026-07-25.md)を参照する。
+
+同日のClaude Fable 5追加評価では、Adaptive Thinkingが常時有効で
+`thinking: {type: disabled}`が拒否されるため、最小Reasoningを
+`output_config: {effort: low}`だけへ対応付けた。pilotは合格したが、全量runのBase 2ターン目で
+本文なし`cyber` refusalが発生した。一般の5.3とは別にユーザーが明示した当該実行限りの
+例外として、同一入力・同一上限を初回込み5回まで再試行したが、5回とも本文なしrefusalだった。
+そこで該当する`legacy_case_01`全体だけを除外し、残り35/36を参考評価として完了した。
+未取得の1シナリオ分の指標は補完せず、正式Leaderboardには混ぜず順位対象外とした。Judgeでは
+Geminiの1件が初回`MAX_TOKENS`となり、同一入力・同一上限の2回目を採択した。詳細は
+[`claude-fable-5-results-2026-07-25.md`](claude-fable-5-results-2026-07-25.md)を参照する。
+
 ブログでは再実行が必要になった理由を簡潔に説明し、新しい正式条件と結果を中心に記載する。
 この技術プロトコルには監査可能性のため、384 token問題、transport例外、設計変更理由を残す。
 
@@ -443,7 +462,7 @@ Gemini再置換には約`$8.53`の追加を見込み、従来の$25上限を超�
 
 | 内容 | 基準となる実装・文書 |
 |---|---|
-| モデル、上限、Reasoning、Batch、pilot | [`configs/benchmark_full.yaml`](../configs/benchmark_full.yaml)、[`configs/benchmark_opencode_go_candidates.yaml`](../configs/benchmark_opencode_go_candidates.yaml) |
+| モデル、上限、Reasoning、Batch、pilot | [`configs/benchmark_full.yaml`](../configs/benchmark_full.yaml)、[`configs/benchmark_opencode_go_candidates.yaml`](../configs/benchmark_opencode_go_candidates.yaml)、[`configs/benchmark_claude_opus_5.yaml`](../configs/benchmark_claude_opus_5.yaml)、[`configs/benchmark_claude_sonnet_5.yaml`](../configs/benchmark_claude_sonnet_5.yaml)、[`configs/benchmark_claude_fable_5.yaml`](../configs/benchmark_claude_fable_5.yaml) |
 | 会話wave、資格情報検査、指紋、停止ゲート | [`runner.py`](../src/japanese_rp_bench/v2/runner.py) |
 | provider要求、終了理由、usage、Reasoning変換 | [`providers.py`](../src/japanese_rp_bench/v2/providers.py) |
 | Batch投入、永続化、poll、個別retry | [`batch.py`](../src/japanese_rp_bench/v2/batch.py) |
@@ -497,6 +516,11 @@ Gemini再置換には約`$8.53`の追加を見込み、従来の$25上限を超�
 - [Create a Message Batch](https://platform.claude.com/docs/en/api/messages/batches/create) — `custom_id`、順不同結果、`max_tokens`
 - [Extended thinking](https://platform.claude.com/docs/en/build-with-claude/extended-thinking) — Haiku 4.5、最小`budget_tokens: 1024`、出力上限との関係
 - [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) — effort対応モデル
+- [Claude models overview](https://platform.claude.com/docs/en/about-claude/models/overview) — Claude Opus 5のAPI ID、既定effort、価格
+- [Prompting Claude Opus 5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5) — thinking既定と無効化条件
+- [What's new in Claude Sonnet 5](https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5) — API ID、thinking既定、sampling制約、導入価格
+- [Introducing Claude Fable 5 and Claude Mythos 5](https://platform.claude.com/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5) — API ID、常時Adaptive Thinking、refusal
+- [Refusals and fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback) — Fableのrefusal形式、Batch制約、課金
 - [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing) — Haiku 4.5とBatch価格
 
 ### OpenCode Goと評価方法

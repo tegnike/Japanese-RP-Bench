@@ -5,13 +5,25 @@
 
 - [リポジトリREADME](../README.md): 概要、最新の正式結果、実行方法
 - [正式計測プロトコル](benchmark-v2-production-protocol.md): 現在の固定条件と再現手順
+- [2026-07-25 Claude Fable 5追加評価](claude-fable-5-results-2026-07-25.md):
+  1件を5回拒否後に除外し、残り35/36を完了した参考結果
+- [2026-07-25 Claude Sonnet 5追加評価](claude-sonnet-5-results-2026-07-25.md):
+  最新の追加正式結果
+- [2026-07-25 Claude Opus 5追加評価](claude-opus-5-results-2026-07-25.md):
+  Opus 5の追加正式結果
 - [2026-07-24 全11モデル完了記録](benchmark-v2-production-status-2026-07-24.md):
-  現在公開している正式結果の詳細
+  先行11モデルの正式結果
 
 ## 現在の扱い
 
-2026-07-24に、11モデルすべてが同じ正式プロトコルによる36シナリオと3 Judgeの評価を
-完了しました。READMEの表には、この条件を満たした結果だけを掲載しています。
+2026-07-24に先行11モデル、2026-07-25にClaude Opus 5とClaude Sonnet 5が、同じ36シナリオと
+3 Judgeの正式条件を完了しました。READMEの表には、この完全性条件を満たした結果だけを
+掲載しています。Claude 5追加shardはユーザー指定により、OpenAI経路を同期、Anthropicと
+Gemini経路をBatchで実行しています。
+
+Claude Fable 5は同条件のpilotに合格した。本文なしrefusalとなった1シナリオを同一条件で
+合計5回まで再試行し、すべて拒否されたためその1件だけを除外した。残り35/36の参考値は
+完了したが、完了済み13モデルの正式順位へは混ぜていない。
 
 それ以前の結果は、設計判断、失敗原因、費用、実行方法を確認するための監査資料として保持
 しています。現在の順位へ混ぜたり、現行設定の推奨値として扱ったりしません。
@@ -62,6 +74,39 @@ provider既定で、7月22日の結果は最小Reasoningを明示した一方、
 
 途中失敗、再実行、費用、成果物のSHA-256、統合結果の出典は
 [2026-07-24 全11モデル完了記録](benchmark-v2-production-status-2026-07-24.md)に保存しています。
+
+### 2026-07-25: Claude Opus 5追加評価
+
+Anthropicの新モデル`claude-opus-5`を、先行11モデルと同じ36シナリオ、対象4,096 token、
+固定ユーザー役、3 Judge、最小Reasoning条件で追加評価しました。Opus 5では既定thinkingと
+effortが従来Claudeと異なるため、`thinking: disabled`と`output_config.effort: low`を
+明示してpilotからfresh runを行いました。
+
+36/36、対象生成327/327、各Judge 57/57を完了し、打ち切り・provider失敗は0でした。結果、
+費用、重大違反、成果物hashは
+[2026-07-25 Claude Opus 5追加評価](claude-opus-5-results-2026-07-25.md)に保存しています。
+
+### 2026-07-25: Claude Sonnet 5追加評価
+
+同じ追加shard条件で`claude-sonnet-5`を評価した。Sonnet 5もthinking既定有効、
+effort既定`high`であるため、`thinking: disabled`と`output_config.effort: low`を明示した。
+36/36、対象生成327/327、各Judge 57/57を完了し、打ち切り・provider失敗は0だった。
+
+結果、費用、重大違反、成果物hashは
+[2026-07-25 Claude Sonnet 5追加評価](claude-sonnet-5-results-2026-07-25.md)に保存している。
+
+### 2026-07-25: Claude Fable 5追加評価
+
+`claude-fable-5`はAdaptive Thinkingを無効化できないため、最小Reasoningを
+`output_config.effort: low`へ対応付けた。pilotは対象22/22、各Judge 2/2、refusal・打ち切り0で
+合格した。
+
+全量runでは`legacy_case_01`の2ターン目で本文なしrefusalが発生し、保存済みBatch結果の
+`stop_details.category`は`cyber`だった。ユーザーの明示指示により入力と上限を変えず
+初回込み5回まで再試行したが、5回とも同じ本文なしrefusalだった。この1シナリオ全体だけを
+除外し、残り35/36を3 Judgeで評価した。RP Balance 95.645、旧8指標平均4.493は参考値であり、
+正式順位対象外とした。完了範囲、未取得指標、費用、成果物hashは
+[2026-07-25 Claude Fable 5追加評価](claude-fable-5-results-2026-07-25.md)に保存している。
 
 ## 履歴文書を読む際の注意
 

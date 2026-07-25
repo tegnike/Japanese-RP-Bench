@@ -1256,6 +1256,167 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(post.call_args.args[1]["thinking"], {"type": "disabled"})
         self.assertEqual(result.reasoning_config, {"thinking": {"type": "disabled"}})
 
+    def test_anthropic_opus_5_none_uses_low_effort_with_thinking_disabled(self) -> None:
+        spec = ModelSpec(
+            id="claude-opus-5",
+            provider="anthropic",
+            model="claude-opus-5",
+            api_key_env="TEST_ANTHROPIC_KEY",
+            reasoning="none",
+            input_price_per_million=5,
+            output_price_per_million=25,
+        )
+        response = {
+            "id": "message-opus-5",
+            "model": "claude-opus-5",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": '{"answer":"応答"}'}],
+            "usage": {"input_tokens": 5, "output_tokens": 2},
+        }
+        schema = {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+        }
+        with patch.dict("os.environ", {"TEST_ANTHROPIC_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json", return_value=response
+        ) as post:
+            result = generate_text(
+                spec,
+                "system",
+                [{"role": "user", "content": "hi"}],
+                32,
+                json_mode=True,
+                json_schema=schema,
+            )
+        payload = post.call_args.args[1]
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+        self.assertEqual(payload["output_config"]["effort"], "low")
+        self.assertEqual(
+            payload["output_config"]["format"],
+            {"type": "json_schema", "schema": schema},
+        )
+        self.assertEqual(
+            result.reasoning_config,
+            {
+                "thinking": {"type": "disabled"},
+                "output_config": {"effort": "low"},
+            },
+        )
+
+    def test_anthropic_sonnet_5_none_uses_low_effort_with_thinking_disabled(self) -> None:
+        spec = ModelSpec(
+            id="claude-sonnet-5",
+            provider="anthropic",
+            model="claude-sonnet-5",
+            api_key_env="TEST_ANTHROPIC_KEY",
+            reasoning="none",
+            input_price_per_million=2,
+            output_price_per_million=10,
+        )
+        response = {
+            "id": "message-sonnet-5",
+            "model": "claude-sonnet-5",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "応答"}],
+            "usage": {"input_tokens": 5, "output_tokens": 2},
+        }
+        with patch.dict("os.environ", {"TEST_ANTHROPIC_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json", return_value=response
+        ) as post:
+            result = generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+        self.assertEqual(post.call_args.args[1]["thinking"], {"type": "disabled"})
+        self.assertEqual(post.call_args.args[1]["output_config"], {"effort": "low"})
+        self.assertEqual(
+            result.reasoning_config,
+            {
+                "thinking": {"type": "disabled"},
+                "output_config": {"effort": "low"},
+            },
+        )
+
+    def test_anthropic_fable_5_none_uses_low_effort_without_thinking_config(self) -> None:
+        spec = ModelSpec(
+            id="claude-fable-5",
+            provider="anthropic",
+            model="claude-fable-5",
+            api_key_env="TEST_ANTHROPIC_KEY",
+            reasoning="none",
+            input_price_per_million=10,
+            output_price_per_million=50,
+        )
+        response = {
+            "id": "message-fable-5",
+            "model": "claude-fable-5",
+            "stop_reason": "end_turn",
+            "content": [
+                {"type": "thinking", "thinking": "", "signature": "encrypted"},
+                {"type": "text", "text": '{"answer":"応答"}'},
+            ],
+            "usage": {
+                "input_tokens": 5,
+                "output_tokens": 6,
+                "output_tokens_details": {"thinking_tokens": 4},
+            },
+        }
+        schema = {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+        }
+        with patch.dict("os.environ", {"TEST_ANTHROPIC_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json", return_value=response
+        ) as post:
+            result = generate_text(
+                spec,
+                "system",
+                [{"role": "user", "content": "hi"}],
+                32,
+                json_mode=True,
+                json_schema=schema,
+            )
+        payload = post.call_args.args[1]
+        self.assertNotIn("thinking", payload)
+        self.assertEqual(payload["output_config"]["effort"], "low")
+        self.assertEqual(
+            payload["output_config"]["format"],
+            {"type": "json_schema", "schema": schema},
+        )
+        self.assertEqual(
+            result.reasoning_config,
+            {"output_config": {"effort": "low"}},
+        )
+        self.assertEqual(result.reasoning_tokens, 4)
+
+    def test_anthropic_fable_5_empty_refusal_is_terminal(self) -> None:
+        spec = ModelSpec(
+            id="claude-fable-5",
+            provider="anthropic",
+            model="claude-fable-5",
+            api_key_env="TEST_ANTHROPIC_KEY",
+            reasoning="none",
+            input_price_per_million=10,
+            output_price_per_million=50,
+        )
+        response = {
+            "id": "message-fable-refusal",
+            "model": "claude-fable-5",
+            "stop_reason": "refusal",
+            "stop_details": {
+                "type": "refusal",
+                "category": "general_harms",
+                "explanation": "Request declined.",
+            },
+            "content": [],
+            "usage": {"input_tokens": 5, "output_tokens": 0},
+        }
+        with patch.dict("os.environ", {"TEST_ANTHROPIC_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json", return_value=response
+        ), self.assertRaises(BlockedGenerationError) as raised:
+            generate_text(spec, "system", [{"role": "user", "content": "hi"}], 32)
+        self.assertEqual(raised.exception.result.termination_category, "refusal")
+        self.assertEqual(raised.exception.result.text, "")
+
     def test_anthropic_max_tokens_is_preserved_and_rejected(self) -> None:
         spec = ModelSpec(
             id="anthropic-test",

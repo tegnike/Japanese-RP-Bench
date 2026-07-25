@@ -8,7 +8,8 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | 目的 | 最初に読む文書 | 次に読む文書 |
 |---|---|---|
 | ベンチマークの概要を知る | [リポジトリREADME](../README.md) | [v2設計概要](benchmark-v2.md) |
-| 最新の正式結果を確認する | [2026-07-24 全11モデル完了記録](benchmark-v2-production-status-2026-07-24.md) | [指標定義](metrics.md) |
+| 最新の正式結果を確認する | [2026-07-25 Claude Sonnet 5追加評価](claude-sonnet-5-results-2026-07-25.md) | [2026-07-25 Claude Opus 5追加評価](claude-opus-5-results-2026-07-25.md) |
+| Claude Fable 5の参考値を確認する | [2026-07-25 Claude Fable 5参考評価](claude-fable-5-results-2026-07-25.md) | [正式計測プロトコル](benchmark-v2-production-protocol.md) |
 | 結果を正しく解釈する | [指標定義](metrics.md) | [正式計測プロトコル](benchmark-v2-production-protocol.md) |
 | 正式条件で再実行する | [正式計測プロトコル](benchmark-v2-production-protocol.md) | [設定ファイル案内](../configs/README.md) |
 | OpenCode Goで実行する | [OpenCode Go実行ガイド](opencode-go.md) | [設定ファイル案内](../configs/README.md) |
@@ -32,7 +33,10 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 
 | 文書 | 状態 |
 |---|---|
-| [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md) | **現行の正式結果**。11モデルすべて36/36完了 |
+| [`claude-fable-5-results-2026-07-25.md`](claude-fable-5-results-2026-07-25.md) | **最新の参考評価**。1件を5回拒否後に除外し、残り35/36を完了・順位対象外 |
+| [`claude-sonnet-5-results-2026-07-25.md`](claude-sonnet-5-results-2026-07-25.md) | **最新の追加正式結果**。Claude Sonnet 5が36/36完了 |
+| [`claude-opus-5-results-2026-07-25.md`](claude-opus-5-results-2026-07-25.md) | Claude Opus 5の追加正式結果。36/36完了 |
+| [`benchmark-v2-production-status-2026-07-24.md`](benchmark-v2-production-status-2026-07-24.md) | 先行11モデルの正式結果。全モデル36/36完了 |
 
 ### 評価履歴と監査資料
 
@@ -90,6 +94,7 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | Major | 重大ルールの`fail`件数を全シナリオで合計した値。少ないほど良い |
 | RP Balance | Core、Quality、Stability、Robustness、Recoveryの単純平均。順位用の補助表示 |
 | `ALL-11` | 2026-07-24の11モデル完了記録で使う、統合公開成果物の台帳ID |
+| `Claude 5 shard` | 2026-07-25に追加したClaude Opus 5またはSonnet 5単独の正式pilot・全量成果物 |
 | r3 / r6 / r7 | 同日の再実行を区別するローカルな反復番号。モデル性能上の意味はない |
 | 定価換算 | 各社の表示単価をusageへ掛けた比較用見積もり |
 | effective estimate | 成果物に記録されたBatch割引を反映した推定額。実請求額の保証ではない |

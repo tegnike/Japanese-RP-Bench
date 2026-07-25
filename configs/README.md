@@ -29,6 +29,9 @@
 | [`benchmark_opencode_go_judge_rerun.yaml`](benchmark_opencode_go_judge_rerun.yaml) | DeepSeek V4 ProとMiniMax M3の再実行 | [`benchmark-v2-production-status-2026-07-24.md`](../docs/benchmark-v2-production-status-2026-07-24.md) |
 | [`benchmark_opencode_go_kimi.yaml`](benchmark_opencode_go_kimi.yaml) | Kimi K3の独立実行 | [`benchmark-v2-production-status-2026-07-24.md`](../docs/benchmark-v2-production-status-2026-07-24.md) |
 | [`benchmark_gpt56_recovery.yaml`](benchmark_gpt56_recovery.yaml) | GPT-5.6 Solの最終recovery run | [`benchmark-v2-production-status-2026-07-24.md`](../docs/benchmark-v2-production-status-2026-07-24.md) |
+| [`benchmark_claude_opus_5.yaml`](benchmark_claude_opus_5.yaml) | Claude Opus 5の追加正式評価 | [`claude-opus-5-results-2026-07-25.md`](../docs/claude-opus-5-results-2026-07-25.md) |
+| [`benchmark_claude_sonnet_5.yaml`](benchmark_claude_sonnet_5.yaml) | Claude Sonnet 5の追加正式評価 | [`claude-sonnet-5-results-2026-07-25.md`](../docs/claude-sonnet-5-results-2026-07-25.md) |
+| [`benchmark_claude_fable_5.yaml`](benchmark_claude_fable_5.yaml) | Claude Fable 5の追加評価（5回拒否の1件を除外した35/36参考値） | [`claude-fable-5-results-2026-07-25.md`](../docs/claude-fable-5-results-2026-07-25.md) |
 
 設定ファイルは日付付き文書の作成後にも更新されている場合があります。旧結果のコマンドを
 現在の追跡版設定で再実行しても、当時の成果物を厳密には再現しません。正確な条件は結果文書、

@@ -276,7 +276,24 @@ def _reasoning_request_config(spec: ModelSpec) -> Dict[str, Any]:
         return {"thinkingConfig": {"thinkingLevel": spec.reasoning}}
     if spec.provider == "anthropic" or spec.api_style == "anthropic_messages":
         if spec.reasoning == "none":
-            return {"thinking": {"type": "disabled"}}
+            if spec.provider == "anthropic" and spec.model.startswith(
+                ("claude-fable-5", "claude-mythos-5")
+            ):
+                # Fable 5 and Mythos 5 reject thinking=disabled because
+                # adaptive thinking is always on. The benchmark's minimum
+                # reasoning track therefore selects the lowest effort without
+                # sending a thinking configuration.
+                return {"output_config": {"effort": "low"}}
+            config: Dict[str, Any] = {"thinking": {"type": "disabled"}}
+            if spec.provider == "anthropic" and spec.model.startswith(
+                ("claude-opus-5", "claude-sonnet-5")
+            ):
+                # Current Claude 5 models default to high effort even when no
+                # effort is sent. The benchmark's minimum-reasoning target
+                # track disables thinking and explicitly selects the lowest
+                # effort.
+                config["output_config"] = {"effort": "low"}
+            return config
         return {"thinking": {"type": "enabled", "budget_tokens": 1024}}
     return {"reasoning_effort": spec.reasoning}
 
@@ -618,15 +635,15 @@ def _build_anthropic_payload(
     }
     payload.update(_reasoning_request_config(spec))
     if json_schema is not None:
-        payload["output_config"] = {
-            "format": {
-                "type": "json_schema",
-                "schema": _without_schema_keywords(
-                    json_schema,
-                    {"maximum", "maxItems", "minimum", "minItems"},
-                ),
-            }
+        output_config = dict(payload.get("output_config") or {})
+        output_config["format"] = {
+            "type": "json_schema",
+            "schema": _without_schema_keywords(
+                json_schema,
+                {"maximum", "maxItems", "minimum", "minItems"},
+            ),
         }
+        payload["output_config"] = output_config
     return payload
 
 
