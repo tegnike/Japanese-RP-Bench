@@ -43,6 +43,9 @@ Claude Fable 5も同じ条件でpilotに合格しました。Base 2ターン目�
 役柄追従度、会話品質、人格安定性、攻撃耐性、復帰力を切り替え、モデルごとのトラック別結果や
 旧8指標の内訳まで確認できます。
 
+[公開中の結果ダッシュボード](https://japanese-rp-bench.tegnike.chatgpt.site/)から、
+ブラウザですぐに確認できます。
+
 ```bash
 cd dashboard
 npm install

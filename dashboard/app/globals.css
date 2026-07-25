@@ -697,14 +697,13 @@ select {
 
   .chart-list {
     min-height: 0;
-    display: flex;
+    display: grid;
     flex: 1;
-    flex-direction: column;
+    align-content: start;
   }
 
   .chart-row {
     min-height: 0;
-    flex: 1;
   }
 }
 

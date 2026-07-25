@@ -20,6 +20,14 @@ const providerOptions: { value: "all" | Provider; label: string }[] = [
   { value: "opencode", label: "OpenCode Go" },
 ];
 
+const filterAndSortResults = (provider: "all" | Provider, metric: ScoreKey) => {
+  const filtered =
+    provider === "all"
+      ? results
+      : results.filter((result) => result.provider === provider);
+  return [...filtered].sort((a, b) => getScore(b, metric) - getScore(a, metric));
+};
+
 const metricEntries = (
   result: ModelResult,
 ): [Exclude<ScoreKey, "summary">, number][] => [
@@ -288,18 +296,15 @@ export function Dashboard() {
   const [selectedId, setSelectedId] = useState(results[0].id);
   const [compareId, setCompareId] = useState(results[1].id);
 
-  const visibleResults = useMemo(() => {
-    const filtered =
-      provider === "all"
-        ? results
-        : results.filter((result) => result.provider === provider);
-    return [...filtered].sort(
-      (a, b) => getScore(b, metric) - getScore(a, metric),
-    );
-  }, [metric, provider]);
+  const visibleResults = useMemo(
+    () => filterAndSortResults(provider, metric),
+    [metric, provider],
+  );
 
   const selected =
-    results.find((result) => result.id === selectedId) ?? visibleResults[0] ?? results[0];
+    visibleResults.find((result) => result.id === selectedId) ??
+    visibleResults[0] ??
+    results[0];
   const compare =
     compareId === "none"
       ? null
@@ -311,6 +316,19 @@ export function Dashboard() {
     setSelectedId(id);
     if (id === compareId) {
       setCompareId("none");
+    }
+  };
+
+  const selectProvider = (nextProvider: "all" | Provider) => {
+    const nextResults = filterAndSortResults(nextProvider, metric);
+    const selectedIsVisible = nextResults.some((result) => result.id === selectedId);
+
+    setProvider(nextProvider);
+    if (!selectedIsVisible && nextResults[0]) {
+      setSelectedId(nextResults[0].id);
+      if (compareId === nextResults[0].id) {
+        setCompareId("none");
+      }
     }
   };
 
@@ -332,7 +350,9 @@ export function Dashboard() {
             <span>評価経路</span>
             <select
               value={provider}
-              onChange={(event) => setProvider(event.target.value as "all" | Provider)}
+              onChange={(event) =>
+                selectProvider(event.target.value as "all" | Provider)
+              }
             >
               {providerOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -375,7 +395,12 @@ export function Dashboard() {
               <span>90</span>
               <span>100</span>
             </div>
-            <div className="chart-list">
+            <div
+              className="chart-list"
+              style={{
+                gridTemplateRows: `repeat(${results.length}, minmax(0, 1fr))`,
+              }}
+            >
               {visibleResults.map((result, index) => {
                 const score = getScore(result, metric);
                 const visualWidth = Math.max(4, ((score - 70) / 30) * 100);
