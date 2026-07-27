@@ -10,7 +10,7 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | ベンチマークの概要を知る | [リポジトリREADME](../README.md) | [v2設計概要](benchmark-v2.md) |
 | 最新の正式結果を確認する | [2026-07-25 GPT-5.6 Terra・Luna追加評価](gpt-5.6-terra-luna-results-2026-07-25.md) | [リポジトリREADME](../README.md) |
 | Claude Fable 5の参考値を確認する | [2026-07-25 Claude Fable 5参考評価](claude-fable-5-results-2026-07-25.md) | [正式計測プロトコル](benchmark-v2-production-protocol.md) |
-| 結果を正しく解釈する | [指標定義](metrics.md) | [正式計測プロトコル](benchmark-v2-production-protocol.md) |
+| 結果を正しく解釈する | [再現性監査と反復計測計画](repeatability-and-opencode-sampling-plan-2026-07-27.md) | [指標定義](metrics.md) |
 | 正式条件で再実行する | [正式計測プロトコル](benchmark-v2-production-protocol.md) | [設定ファイル案内](../configs/README.md) |
 | OpenCode Goで実行する | [OpenCode Go実行ガイド](opencode-go.md) | [設定ファイル案内](../configs/README.md) |
 | Role Packを作る | [Role Pack作成ガイド](../role_packs/README.md) | [v2設計概要](benchmark-v2.md) |
@@ -26,6 +26,7 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | [`benchmark-v2.md`](benchmark-v2.md) | v2の設計、Role Pack、成果物、モデル構成の概要 |
 | [`benchmark-v2-production-protocol.md`](benchmark-v2-production-protocol.md) | 11モデル正式計測の固定条件、停止条件、再開条件、公開条件 |
 | [`opencode-go.md`](opencode-go.md) | OpenCode Goの接続、API形式、実行、429時の再開方法 |
+| [`repeatability-and-opencode-sampling-plan-2026-07-27.md`](repeatability-and-opencode-sampling-plan-2026-07-27.md) | 現行値の再現性監査、読み方、OpenCode Go優先の反復測定計画 |
 | [`role_packs/README.md`](../role_packs/README.md) | Role Packの構造、各フィールド、作成・検証手順 |
 | [`configs/README.md`](../configs/README.md) | 現行設定、履歴用設定、補助スクリプトの使い分け |
 
@@ -43,6 +44,10 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 
 [`evaluation-history.md`](evaluation-history.md)に、過去の試行、評価条件を変更した理由、
 旧結果の扱い、日付付き監査文書への導線を時系列でまとめています。
+
+2026-07-26〜27の固定会話Judge再現性監査と次段階の標本設計は
+[`repeatability-and-opencode-sampling-plan-2026-07-27.md`](repeatability-and-opencode-sampling-plan-2026-07-27.md)
+にまとめています。
 
 ### フォーク元の保存資料
 

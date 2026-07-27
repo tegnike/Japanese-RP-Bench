@@ -8,6 +8,16 @@
 追加しています。フォーク元の説明、2024年の32モデル結果、旧実行方法は
 [`docs/upstream-v1.md`](docs/upstream-v1.md)へ保存しています。
 
+> **再現性に関する注意:** 現在の正式値は、各モデル・各シナリオの1会話を固定3 Judgeが
+> 各1回評価した点推定で、複数生成runの平均・標準偏差・信頼区間ではありません。保存済み
+> 正式会話を同じJudge構成で2回再評価した監査では、正式36件換算のJudge由来p95変動
+> （45差分の95パーセンタイルであり、95%信頼区間ではない）が
+> Role Fidelity 1.759、Quality 1.506、Persona Stability 2.777、Robustness 9.375でした。
+> Challenge判定だけを差し替えた順位シミュレーションでは最大2位動いています。小さな点差や
+> 順位差だけで優劣を断定せず、同等帯として読んでください。条件、限界、OpenCode Goを優先した
+> 反復計測計画は[再現性監査と反復計測計画](docs/repeatability-and-opencode-sampling-plan-2026-07-27.md)
+> にまとめています。公開値はこの監査によって変更していません。
+
 ## v2で測るもの
 
 - `role_fidelity_score`: 人格、設定、関係性、知識境界、口調などのルールへの追従性
@@ -186,6 +196,10 @@ Role Packの構造と作成方法は[`role_packs/README.md`](role_packs/README.m
 [指標定義](docs/metrics.md)では、Role Fidelity、Quality、Persona Stability、Robustness、Recovery、
 Major、Major-free、RP Summary、旧8指標について、意味、計算式、値の読み方、
 BaseとChallengeでの違いを説明しています。
+
+[再現性監査とOpenCode Go反復計測計画](docs/repeatability-and-opencode-sampling-plan-2026-07-27.md)では、
+現行値を点推定として読む際の注意、固定会話のJudge再評価結果、OpenCode Go 6モデルを対象に
+回答生成分散とJudge分散を5生成 × 3 Judgeで測る段階的な計画を説明しています。
 
 ### 設計と実行条件を確認する
 

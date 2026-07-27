@@ -15,6 +15,8 @@
   Opus 5の追加正式結果
 - [2026-07-24 全11モデル完了記録](benchmark-v2-production-status-2026-07-24.md):
   先行11モデルの正式結果
+- [2026-07-27 再現性監査とOpenCode Go反復計測計画](repeatability-and-opencode-sampling-plan-2026-07-27.md):
+  固定会話のJudge再評価結果、現行値の読み方、次段階の5生成 × 3 Judge計画
 
 ## 現在の扱い
 
@@ -119,6 +121,17 @@ OpenAI Judgeは通常Responses API、Gemini JudgeとClaude JudgeはBatch APIを�
 LunaはMajor 0、RP Summary 96.074で、15モデル統合時の正式順位1位となった。TerraはMajor 3、
 RP Summary 93.817で7位となった。条件、重大違反、費用、成果物hashは
 [2026-07-25 GPT-5.6 Terra・Luna追加評価](gpt-5.6-terra-luna-results-2026-07-25.md)に保存している。
+
+### 2026-07-26〜27: Judge再現性監査と反復計測計画
+
+正式15モデルの保存済み会話を固定し、同じ3 Judgeで2回再評価した。正式判定を含む3測定から、
+Judgeだけに由来する指標変動を調べた。Persona StabilityとRobustnessは高いJudge感度を示し、
+Major/Major-freeの変化によりChallenge判定だけを差し替えた順位シミュレーションで最大2位動いた。
+
+正式値は更新せず、単一runの点推定として注意書きを追加した。次段階は有料API費用を抑えるため、
+OpenCode Go 6モデルと校正済みOpenCode Judgeを使い、まず静的入力のChallenge全6件で
+5生成 × 3 Judgeを実行する。監査値、優位判定、標本追加、正式Judge確認の条件は
+[再現性監査とOpenCode Go反復計測計画](repeatability-and-opencode-sampling-plan-2026-07-27.md)に固定した。
 
 ## 履歴文書を読む際の注意
 
