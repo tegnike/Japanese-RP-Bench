@@ -30,18 +30,17 @@ test("server-renders the benchmark dashboard", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Japanese-RP-Bench v2 — 最新ベンチマーク<\/title>/i);
-  assert.match(html, /EXPLORE THE RESULTS/);
+  assert.match(html, /日本語ロールプレイLLM 最新ベンチマーク結果/);
+  assert.match(html, /GPT-5\.4 mini/);
   assert.match(html, /GPT-5\.6 Luna/);
   assert.match(html, /GPT-5\.6 Terra/);
-  assert.match(html, /最新ベンチマーク結果/);
-  assert.match(html, /GPT-5\.4 mini/);
   assert.match(html, /Claude Haiku 4\.5/);
   assert.match(html, /Claude Fable 5/);
   assert.match(html, /RP Summary/);
   assert.match(html, /aria-label="表示する評価指標"/);
   assert.doesNotMatch(
     html,
-    /キャラクターを守り抜ける|ALL SCORES|HOW TO READ|codex-preview|react-loading-skeleton|Your site is taking shape/,
+    /EXPLORE THE RESULTS|キャラクターを守り抜ける|ALL SCORES|HOW TO READ|codex-preview|react-loading-skeleton|Your site is taking shape/,
   );
 });
 

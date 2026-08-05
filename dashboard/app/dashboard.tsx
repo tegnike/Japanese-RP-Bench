@@ -337,8 +337,7 @@ export function Dashboard() {
       <section className="leaderboard-shell">
         <div className="leaderboard-intro">
           <div>
-            <span className="eyebrow">EXPLORE THE RESULTS</span>
-            <h1>最新ベンチマーク結果</h1>
+            <h1>日本語ロールプレイLLM 最新ベンチマーク結果</h1>
             <p>
               {benchmarkMeta.updatedAt} · 正式{benchmarkMeta.modelCount}モデル + 参考
               {benchmarkMeta.referenceModelCount}モデル · 最大
