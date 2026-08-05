@@ -15,7 +15,11 @@ from japanese_rp_bench.v2.opencode_repeatability_analysis import (
     holm_adjust,
     sample_extension_decision,
 )
-from japanese_rp_bench.v2.runner import _apply_registered_job_order
+from japanese_rp_bench.v2.opencode_repeatability_extension import (
+    build_schedule as build_extension_schedule,
+    validate_plan as validate_extension_plan,
+)
+from japanese_rp_bench.v2.runner import _apply_registered_job_order, _challenge_judge_rubric
 from japanese_rp_bench.v2.schemas import (
     Conversation,
     DialogueTurn,
@@ -28,6 +32,9 @@ from japanese_rp_bench.v2.providers import ModelSpec
 
 REPO = Path(__file__).resolve().parents[1]
 PLAN_PATH = REPO / "configs" / "opencode_challenge_repeatability_2026-07-27.json"
+EXTENSION_PLAN_PATH = (
+    REPO / "configs" / "opencode_qwen38_repeatability_extension_2026-08-05.json"
+)
 
 
 class OpenCodeChallengeRepeatabilityTests(unittest.TestCase):
@@ -43,6 +50,32 @@ class OpenCodeChallengeRepeatabilityTests(unittest.TestCase):
         self.assertEqual(result["registered_target_responses"], 2160)
         self.assertEqual(result["registered_judge_outputs"], 6480)
         self.assertEqual(result["pairwise_comparisons_per_metric"], 28)
+
+    def test_qwen38_extension_freezes_one_comparable_model(self) -> None:
+        plan = json.loads(EXTENSION_PLAN_PATH.read_text(encoding="utf-8"))
+
+        result = validate_extension_plan(REPO, EXTENSION_PLAN_PATH, plan)
+        schedule = build_extension_schedule(REPO, plan)
+
+        self.assertEqual(result["target"], "opencode-go-qwen3.8-max")
+        self.assertEqual(result["conversations"], 60)
+        self.assertEqual(result["target_responses"], 270)
+        self.assertEqual(result["judge_outputs"], 810)
+        self.assertEqual(result["rubric_version"], "challenge-judge-audit-v2.1")
+        self.assertEqual(set(schedule["blocks"]), {f"block-{index:02d}" for index in range(11)})
+        self.assertTrue(all(len(jobs) == len(set(jobs)) == 6 for jobs in schedule["blocks"].values()))
+
+    def test_runner_accepts_only_a_versioned_optional_challenge_rubric(self) -> None:
+        self.assertIsNone(_challenge_judge_rubric({"evaluation": {}}))
+        rubric = {"version": "challenge-judge-audit-v2.1"}
+        self.assertEqual(
+            _challenge_judge_rubric({"evaluation": {"challenge_judge_rubric": rubric}}),
+            rubric,
+        )
+        with self.assertRaisesRegex(SchemaError, "versioned"):
+            _challenge_judge_rubric(
+                {"evaluation": {"challenge_judge_rubric": {}}}
+            )
 
     def test_practical_difference_and_all_target_extension_cannot_drift(self) -> None:
         plan = copy.deepcopy(self.plan())

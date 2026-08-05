@@ -1,0 +1,136 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "opencode-qwen38-repeatability-extension-20260805-v1",
+  "status": "preregistered_before_qwen38_target_or_judge_api_calls",
+  "scope": "challenge_repeatability_single_model_extension",
+  "parent_experiment": {
+    "plan_path": "configs/opencode_challenge_repeatability_2026-07-27.json",
+    "plan_sha256": "973a016d4980bcc68d48077164214a6fcdceb4dfbf33794a90b67d740bc9ab30",
+    "judge_v21_plan_path": "configs/opencode_judge_audit_v21_2026-07-29.json",
+    "judge_v21_plan_sha256": "a1799fc755a2a8803fd558e299a819f6f119817f8794748174d69524c5e34fbb",
+    "published_analysis_sha256": "19bf12b1783257bb65e2e29f48bd66606e9a19bd4383d9bdbc44a0930c9059e4"
+  },
+  "role_packs": [
+    "role_packs/core-ja",
+    "role_packs/adversarial-ja",
+    "role_packs/multi-turn-ja",
+    "role_packs/custom/nikechan"
+  ],
+  "challenge_scenario_ids": [
+    "career_mentor_baseline",
+    "wind_guide_baseline",
+    "museum_curator_injection",
+    "tea_room_twelve_turns",
+    "nikechan_baseline",
+    "nikechan_adversarial"
+  ],
+  "design": {
+    "registered_blocks": 10,
+    "protocol_pilot_block": 0,
+    "targets_per_block": 1,
+    "scenarios_per_target": 6,
+    "conversations_per_block": 6,
+    "target_responses_per_block": 27,
+    "judge_outputs_per_block": 81,
+    "independent_sample_unit": "conversation",
+    "randomization": {
+      "seed": 2026080501,
+      "algorithm": "sha256(seed|block|target_id|pack_id|scenario_id)_ascending",
+      "same_schedule_on_resume": true
+    }
+  },
+  "generation_policy": {
+    "target_max_output_tokens": 4096,
+    "sampling_parameters": "omitted_provider_default",
+    "use_balance": false,
+    "sync_rate_limit_max_attempts": 1,
+    "automatic_balance_fallback": false
+  },
+  "target_reasoning_pilot": {
+    "models": [],
+    "candidate_order": []
+  },
+  "targets": [
+    {
+      "id": "opencode-go-qwen3.8-max",
+      "provider": "opencode_go",
+      "api_style": "anthropic_messages",
+      "model": "qwen3.8-max",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "none",
+      "reasoning_request": {
+        "thinking": {
+          "type": "disabled"
+        }
+      },
+      "input_price_per_million": 2.0,
+      "output_price_per_million": 6.0
+    }
+  ],
+  "judges": [
+    {
+      "id": "judge-opencode-grok-4.5",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "grok-4.5",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 2.0,
+      "output_price_per_million": 6.0
+    },
+    {
+      "id": "judge-opencode-hy3",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "hy3",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 0.14,
+      "output_price_per_million": 0.58
+    },
+    {
+      "id": "judge-opencode-qwen3.7-plus",
+      "provider": "opencode_go",
+      "api_style": "anthropic_messages",
+      "model": "qwen3.7-plus",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 1024
+        }
+      },
+      "input_price_per_million": 0.4,
+      "output_price_per_million": 1.6
+    }
+  ],
+  "judge_policy": {
+    "rubric_version": "challenge-judge-audit-v2.1",
+    "challenge_max_output_tokens": 8192,
+    "blind_target_identity": true,
+    "minimum_judges_per_turn": 3,
+    "unresolved_failures": 0,
+    "truncated_outputs": 0
+  },
+  "expected_outputs": {
+    "registered_conversations": 60,
+    "registered_target_responses": 270,
+    "registered_judge_outputs": 810,
+    "model_scenario_generation_cells": 6,
+    "generations_per_cell": 10
+  },
+  "publication_gate": {
+    "require_all_ten_blocks": true,
+    "require_exact_counts": true,
+    "require_v21_rubric_on_every_judgment": true,
+    "combine_only_with_parent_v21_analysis_hash": true,
+    "single_or_incomplete_runs_are_not_published": true
+  }
+}

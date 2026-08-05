@@ -16,6 +16,7 @@
 | [`opencode_judge_audit_v2_2026-07-28.json`](opencode_judge_audit_v2_2026-07-28.json) | 保存済み83重大不一致の抽出、分類基準、修正版Judgeルーブリック、API停止条件 |
 | [`opencode_judge_audit_v2_contrast_pairs_2026-07-28.json`](opencode_judge_audit_v2_contrast_pairs_2026-07-28.json) | 修正版Judgeの最低方向と評価軸分離を確認する4 pair・8 case |
 | [`opencode_judge_audit_v21_contrast_pairs_2026-07-29.json`](opencode_judge_audit_v21_contrast_pairs_2026-07-29.json) | v2.1の方向性と過剰判定を停止する9 pair・18 case |
+| [`opencode_qwen38_repeatability_extension_2026-08-05.json`](opencode_qwen38_repeatability_extension_2026-08-05.json) | 現在の8モデルと同条件でQwen3.8 Maxだけを6シナリオ×10生成し、Judge v2.1で追加評価する事前登録 |
 
 `benchmark_full.yaml`と`benchmark_opencode_go_candidates.yaml`は、過去の15モデル単回評価を
 構成した入口です。現在の主結果へ追加する場合は、単回runを混ぜず、反復評価計画に同じモデル・

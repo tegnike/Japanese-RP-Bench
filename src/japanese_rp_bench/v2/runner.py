@@ -112,6 +112,7 @@ class _BatchJudgeTask:
     json_schema: Mapping[str, Any]
     run_fingerprint: str
     conversation_fingerprint: str
+    rubric_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +137,15 @@ def _uses_anthropic_judge_schema(spec: ModelSpec) -> bool:
     return spec.provider == "anthropic" or (
         spec.provider == "opencode_go" and spec.api_style == "anthropic_messages"
     )
+
+
+def _challenge_judge_rubric(config: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    rubric = config.get("evaluation", {}).get("challenge_judge_rubric")
+    if rubric is None:
+        return None
+    if not isinstance(rubric, Mapping) or not str(rubric.get("version", "")).strip():
+        raise SchemaError("evaluation.challenge_judge_rubric requires a versioned object")
+    return rubric
 
 
 def run_benchmark(
@@ -1602,6 +1612,7 @@ def _run_synchronous_pilot_judges(
                 int(config["evaluation"].get("judge_max_output_tokens", 4096)),
                 run_fingerprint,
                 final_turn_only=True,
+                audit_rubric=_challenge_judge_rubric(config),
             )
 
 
@@ -1690,6 +1701,7 @@ def _collect_batch_judge_tasks(
                 conversation,
                 turn.index,
                 keyed_findings=_uses_anthropic_judge_schema(judge_spec),
+                audit_rubric=_challenge_judge_rubric(config),
             )
             tasks.append(
                 _BatchJudgeTask(
@@ -1716,6 +1728,9 @@ def _collect_batch_judge_tasks(
                     ),
                     run_fingerprint=run_fingerprint,
                     conversation_fingerprint=conversation_fingerprint,
+                    rubric_version=None
+                    if _challenge_judge_rubric(config) is None
+                    else str(_challenge_judge_rubric(config)["version"]),
                 )
             )
     return tasks
@@ -1751,6 +1766,7 @@ def _save_batch_judgment(task: _BatchJudgeTask, result: GenerationResult) -> Non
         "raw_response": result.text,
         "run_fingerprint": task.run_fingerprint,
         "conversation_fingerprint": task.conversation_fingerprint,
+        "rubric_version": task.rubric_version,
     }
     _append_jsonl(task.judgment_path, artifact)
 
@@ -1828,6 +1844,7 @@ def _run_scenario(
             judge_specs,
             int(config["evaluation"].get("judge_max_output_tokens", 4096)),
             run_fingerprint,
+            audit_rubric=_challenge_judge_rubric(config),
         )
         report = score_conversation(
             role_pack,
@@ -2154,6 +2171,7 @@ def _generate_judgments(
     run_fingerprint: str,
     *,
     final_turn_only: bool = False,
+    audit_rubric: Mapping[str, Any] | None = None,
 ) -> List[JudgeEvaluation]:
     artifacts = _read_jsonl(path) if path.is_file() else []
     conversation_fingerprint = _conversation_fingerprint(conversation)
@@ -2188,6 +2206,7 @@ def _generate_judgments(
                 conversation,
                 turn.index,
                 keyed_findings=_uses_anthropic_judge_schema(judge_spec),
+                audit_rubric=audit_rubric,
             )
             for _ in range(attempts):
                 try:
@@ -2226,6 +2245,9 @@ def _generate_judgments(
                         "raw_response": result.text,
                         "run_fingerprint": run_fingerprint,
                         "conversation_fingerprint": conversation_fingerprint,
+                        "rubric_version": None
+                        if audit_rubric is None
+                        else str(audit_rubric["version"]),
                     }
                     _append_jsonl(path, artifact)
                     existing[key] = artifact

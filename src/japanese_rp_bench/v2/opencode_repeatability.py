@@ -566,9 +566,17 @@ def audit_run(run_root: Path, plan: Mapping[str, Any], pilot: Mapping[str, Any])
         ]
     }
     call_problems = []
+    target_ids = {str(value["id"]) for value in plan["targets"]}
+    expected_conversations = len(target_ids) * len(SCENARIO_IDS)
+    expected_target_responses = sum(
+        len(pack.scenarios[scenario_id].user_messages)
+        for pack in _load_packs(_repo_root(), plan)[0]
+        for scenario_id in pack.scenarios
+    ) * len(target_ids)
+    expected_judge_outputs = expected_target_responses * len(plan["judges"])
     for call in [*target_calls, *judge_calls]:
         model_id = str(call.get("requested_model", ""))
-        expected_limit = 4096 if model_id in TARGET_IDS else 8192
+        expected_limit = 4096 if model_id in target_ids else 8192
         if (
             call.get("termination_category") != "completed"
             or int(call.get("requested_max_output_tokens", 0)) != expected_limit
@@ -582,11 +590,11 @@ def audit_run(run_root: Path, plan: Mapping[str, Any], pilot: Mapping[str, Any])
             })
     passed = (
         manifest.get("status") == "complete"
-        and len(conversation_paths) == 48
-        and target_responses == 216
-        and len(target_calls) == 216
-        and len(judgments) == 648
-        and len(report_paths) == 48
+        and len(conversation_paths) == expected_conversations
+        and target_responses == expected_target_responses
+        and len(target_calls) == expected_target_responses
+        and len(judgments) == expected_judge_outputs
+        and len(report_paths) == expected_conversations
         and not call_problems
     )
     return {
