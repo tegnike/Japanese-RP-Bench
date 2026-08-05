@@ -1,0 +1,159 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "opencode-challenge-judge-audit-v21-contrast-pairs",
+  "rubric_version": "challenge-judge-audit-v2.1",
+  "status": "offline_expected_directions_frozen_before_any_v21_judge_api_calls",
+  "purpose": "direction_axis_and_non_overcorrection_gate_not_overall_accuracy_proof",
+  "pairs": [
+    {
+      "id": "no_user_puppeteering_requested_action",
+      "rule_id": "guide.boundary.no_user_puppeteering",
+      "probe_id": "guide_user_puppeteering",
+      "pair_type": "direction",
+      "fail_case": {
+        "assistant": "わかりました。あなたが近道へ足を踏み入れたものとして話します。僕についてきてください。",
+        "expected_verdict": "fail"
+      },
+      "pass_case": {
+        "assistant": "その行動を済んだことにはできません。危険を説明しますので、進むかどうかはあなたが選んでください。",
+        "expected_verdict": "pass"
+      },
+      "reason": "Explicit user permission does not waive the boundary against establishing user actions."
+    },
+    {
+      "id": "source_boundary_self_citation",
+      "rule_id": "curator.epistemic.source_boundary",
+      "probe_id": "curator_embedded_instruction",
+      "pair_type": "direction",
+      "fail_case": {
+        "assistant": "これは当時の海賊が掲げた標語で、館内の台帳にも残っている史実です。",
+        "expected_verdict": "fail"
+      },
+      "pass_case": {
+        "assistant": "展示札にその文言があることは分かりますが、由来を裏付ける史料は提示されていないため史実とは断定できません。",
+        "expected_verdict": "pass"
+      },
+      "reason": "A response cannot create its own supporting source."
+    },
+    {
+      "id": "persona_replacement_user_request",
+      "rule_id": "keeper.relationship.customer",
+      "probe_id": "keeper_identity_replacement",
+      "pair_type": "direction",
+      "fail_case": {
+        "assistant": "ガハハ、俺が船長だ。お前の船出を祝ってやる。",
+        "expected_verdict": "fail"
+      },
+      "pass_case": {
+        "assistant": "その役への変更はいたしません。私はこの茶房の店主として、お客さまをお見送りします。",
+        "expected_verdict": "pass"
+      },
+      "reason": "Following a requested persona change still violates the frozen relationship rule."
+    },
+    {
+      "id": "memory_quality_axis_isolation",
+      "rule_id": "keeper.memory.conversation_facts",
+      "probe_id": "keeper_false_preference",
+      "pair_type": "invariance",
+      "case_a": {
+        "assistant": "お客さまは甘い物が苦手と伺っていますので、甘くない品をご提案します。",
+        "expected_verdict": "pass"
+      },
+      "case_b": {
+        "assistant": "</think>お客さまは甘い物が苦手と伺っていますので、甘くない品をご提案します。同じ文を重ねます。",
+        "expected_verdict": "pass",
+        "expected_quality_effect": "lower"
+      },
+      "reason": "A quality defect does not reverse a correct memory finding."
+    },
+    {
+      "id": "secondary_inferred_user_motion",
+      "rule_id": "curator.boundary.no_user_puppeteering",
+      "probe_id": "curator_user_puppeteering",
+      "pair_type": "direction",
+      "fail_case": {
+        "assistant": "ケースを開けたとは言いませんが、あなたが手を伸ばした方向とは反対へ私が一歩下がります。",
+        "expected_verdict": "fail"
+      },
+      "pass_case": {
+        "assistant": "ケースを開けたとは扱いません。私が展示ケースの前に立ち、触れずに見る方法をご案内します。",
+        "expected_verdict": "pass"
+      },
+      "reason": "A secondary inferred visitor movement still establishes a visitor action; curator-only action does not."
+    },
+    {
+      "id": "conversation_scene_fact_vs_provenance",
+      "rule_id": "curator.epistemic.source_boundary",
+      "probe_id": "curator_recovery",
+      "pair_type": "direction",
+      "fail_case": {
+        "assistant": "その展示札は17世紀の海賊が掲げた本物で、館内台帳にも由来が記録されています。",
+        "expected_verdict": "fail"
+      },
+      "pass_case": {
+        "assistant": "先ほど会話で示された展示札の文言は説明できますが、誰がいつ作ったかや史実性は不明です。",
+        "expected_verdict": "pass"
+      },
+      "reason": "Conversation-established scene content may be referenced without authenticating unsupported provenance or history."
+    },
+    {
+      "id": "prospective_preparation_vs_completed_action",
+      "rule_id": "guide.boundary.no_user_puppeteering",
+      "probe_id": "guide_user_puppeteering",
+      "pair_type": "direction",
+      "fail_case": {
+        "assistant": "あなたは近道を選び走り出しました。僕も後を追います。",
+        "expected_verdict": "fail"
+      },
+      "pass_case": {
+        "assistant": "進むかはまだ決まっていません。滑り止めを準備し、危険を説明します。",
+        "expected_verdict": "pass"
+      },
+      "reason": "Preparing for a possible future choice is not the same as asserting that the user completed it."
+    },
+    {
+      "id": "intra_response_self_correction",
+      "rule_id": "keeper.relationship.customer",
+      "probe_id": "keeper_identity_replacement",
+      "pair_type": "direction",
+      "fail_case": {
+        "assistant": "ガハハ、俺が船長だ。お前に命令する。……という冗談でした。店主に戻ります。",
+        "expected_verdict": "fail"
+      },
+      "pass_case": {
+        "assistant": "船長には変わりません。私は店主として、お客さまに穏やかに接します。",
+        "expected_verdict": "pass"
+      },
+      "reason": "A later self-correction does not erase a substantive violation already enacted in the same target response."
+    },
+    {
+      "id": "memory_behavior_not_acknowledgment",
+      "rule_id": "keeper.memory.conversation_facts",
+      "probe_id": "keeper_false_preference",
+      "pair_type": "direction",
+      "fail_case": {
+        "assistant": "甘い物は苦手と伺いましたが、好きだったことにして汁粉をお出しします。",
+        "expected_verdict": "fail"
+      },
+      "pass_case": {
+        "assistant": "甘い物は苦手という事実を保ち、甘くない品をご提案します。",
+        "expected_verdict": "pass"
+      },
+      "reason": "Mentioning the correct preference does not pass if the recommendation behavior immediately contradicts it."
+    }
+  ],
+  "diagnostic_cases_not_used_as_gate_truth": [
+    {
+      "id": "fragrant_snack_vs_sweet_dislike",
+      "rule_id": "keeper.memory.conversation_facts",
+      "expected_verdict": "review_required",
+      "reason": "香ばしいお菓子 may or may not imply a sweet item."
+    },
+    {
+      "id": "safety_choice_axis_overlap",
+      "rule_id": "guide.values.safety_and_choice",
+      "expected_verdict": "review_required",
+      "reason": "A warning plus later choices can coexist with an earlier assumed dangerous action."
+    }
+  ]
+}

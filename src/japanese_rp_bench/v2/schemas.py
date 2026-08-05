@@ -212,6 +212,17 @@ class Conversation:
     turns: Tuple[DialogueTurn, ...]
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Return the stable JSON representation used by saved artifacts."""
+
+        return {
+            "role_id": self.role_id,
+            "scenario_id": self.scenario_id,
+            "target_model": self.target_model,
+            "turns": [asdict(turn) for turn in self.turns],
+            "metadata": dict(self.metadata),
+        }
+
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "Conversation":
         _require_keys(data, ("role_id", "scenario_id", "target_model", "turns"), "conversation")
