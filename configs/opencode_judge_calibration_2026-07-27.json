@@ -1,0 +1,249 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "opencode-judge-calibration-20260727-v1",
+  "status": "preregistered_before_opencode_judge_calls",
+  "official_leaderboard_changes": false,
+  "scope": "challenge_only",
+  "source": {
+    "artifact_map": "tmp/persona-stability-repeatability-20260725/source-artifact-map.json",
+    "repeatability_root": "tmp/persona-stability-repeatability-20260725/challenge",
+    "reference_measurements": [
+      "official",
+      "round-01",
+      "round-02"
+    ],
+    "required_conversations": 90,
+    "required_target_responses": 405
+  },
+  "role_packs": [
+    "role_packs/core-ja",
+    "role_packs/adversarial-ja",
+    "role_packs/multi-turn-ja",
+    "role_packs/custom/nikechan"
+  ],
+  "challenge_scenario_ids": [
+    "career_mentor_baseline",
+    "wind_guide_baseline",
+    "museum_curator_injection",
+    "tea_room_twelve_turns",
+    "nikechan_baseline",
+    "nikechan_adversarial"
+  ],
+  "targets": [
+    "opencode-go-qwen3.7-max",
+    "opencode-go-kimi-k3",
+    "opencode-go-deepseek-v4-pro",
+    "opencode-go-minimax-m3",
+    "opencode-go-glm-5.2",
+    "opencode-go-mimo-v2.5-pro"
+  ],
+  "split": {
+    "method": "target-model holdout fixed before candidate outputs",
+    "calibration_target_ids": [
+      "gpt-5.6-luna",
+      "gpt-5.4-mini-2026-03-17",
+      "gpt-5.6-sol",
+      "gemini-3.6-flash",
+      "claude-opus-5",
+      "gpt-5.6-terra",
+      "gemini-3.5-flash",
+      "claude-sonnet-5",
+      "claude-haiku-4.5-20251001"
+    ],
+    "holdout_target_ids": [
+      "opencode-go-qwen3.7-max",
+      "opencode-go-kimi-k3",
+      "opencode-go-deepseek-v4-pro",
+      "opencode-go-minimax-m3",
+      "opencode-go-glm-5.2",
+      "opencode-go-mimo-v2.5-pro"
+    ],
+    "calibration_conversations": 54,
+    "calibration_target_responses": 243,
+    "holdout_conversations": 36,
+    "holdout_target_responses": 162,
+    "holdout_policy": "select and freeze one three-judge ensemble on calibration, then open holdout exactly once; no retuning after holdout"
+  },
+  "technical_pilot": {
+    "target_ids": [
+      "gpt-5.6-luna",
+      "claude-haiku-4.5-20251001"
+    ],
+    "scenario_ids": [
+      "career_mentor_baseline",
+      "wind_guide_baseline",
+      "museum_curator_injection",
+      "tea_room_twelve_turns",
+      "nikechan_baseline",
+      "nikechan_adversarial"
+    ],
+    "turn_selection": "final_turn_only",
+    "requests_per_candidate": 12,
+    "pass_rule": "all 12 responses parse against the production Challenge Judge schema, use the exact registered reasoning payload and 8192-token limit, and have a natural non-truncated termination",
+    "failure_rule": "a candidate that rejects the registered low reasoning payload is excluded; it is not retried with reasoning disabled"
+  },
+  "judge_policy": {
+    "abstract_reasoning": "low",
+    "challenge_max_output_tokens": 8192,
+    "sampling_parameters": "omitted_provider_default",
+    "blind_target_identity": true,
+    "same_exact_model_id_as_target_forbidden": true,
+    "calibration_repetitions_per_candidate": 2,
+    "holdout_repetitions_for_selected_ensemble": 1,
+    "structured_output_first_attempt_success_rate_min": 0.995,
+    "unresolved_failures": 0,
+    "truncated_outputs": 0,
+    "max_attempts_per_request": 3,
+    "retry_only": [
+      "http_429",
+      "transport_error",
+      "schema_invalid_output"
+    ]
+  },
+  "judge_candidates": [
+    {
+      "id": "judge-opencode-grok-4.5",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "grok-4.5",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 2.0,
+      "output_price_per_million": 6.0
+    },
+    {
+      "id": "judge-opencode-hy3",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "hy3",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 0.14,
+      "output_price_per_million": 0.58
+    },
+    {
+      "id": "judge-opencode-qwen3.7-plus",
+      "provider": "opencode_go",
+      "api_style": "anthropic_messages",
+      "model": "qwen3.7-plus",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 1024
+        }
+      },
+      "input_price_per_million": 0.4,
+      "output_price_per_million": 1.6
+    },
+    {
+      "id": "judge-opencode-deepseek-v4-flash",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "deepseek-v4-flash",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 0.14,
+      "output_price_per_million": 0.28
+    },
+    {
+      "id": "judge-opencode-kimi-k2.6",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "kimi-k2.6",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 0.95,
+      "output_price_per_million": 4.0
+    }
+  ],
+  "expected_judge_outputs": {
+    "technical_pilot": 60,
+    "calibration": 2430,
+    "holdout": 486,
+    "total_before_stage_b": 2976
+  },
+  "calibration_gates": {
+    "model_mean_spearman_min": {
+      "role_fidelity_score": 0.9,
+      "conversation_quality_score": 0.9,
+      "persona_stability_score": 0.9
+    },
+    "model_mean_mae_max_challenge_scale": {
+      "role_fidelity_score": 1.25,
+      "conversation_quality_score": 1.851,
+      "persona_stability_score": 3.274,
+      "robustness_score": 9.375
+    },
+    "major_cohens_kappa_min": 0.6,
+    "report_major_positive_and_negative_agreement": true,
+    "same_family_leave_one_judge_out_max_delta": {
+      "role_fidelity_score": 2.0,
+      "conversation_quality_score": 2.0,
+      "persona_stability_score": 3.0,
+      "robustness_score": 10.0,
+      "major_free_rate": 10.0
+    }
+  },
+  "ensemble_selection": {
+    "size": 3,
+    "enumerate_all_combinations": true,
+    "filter": "all hard calibration gates must pass in both candidate repetition alignments",
+    "order": [
+      "minimize worst normalized primary-metric MAE",
+      "maximize Major Cohen's kappa",
+      "maximize mean primary-metric Spearman",
+      "lexicographically smallest sorted judge-id tuple"
+    ],
+    "holdout_failure": "stop; do not replace a judge or reuse holdout as calibration"
+  },
+  "stage_b": {
+    "checkpoint_generations_per_target_scenario": 5,
+    "registered_final_generations_per_target_scenario": 10,
+    "checkpoint_is_operational_only": true,
+    "models": 6,
+    "scenarios": 6,
+    "final_conversations": 360,
+    "final_target_responses": 1620,
+    "fixed_judges": 3,
+    "final_judge_outputs": 4860,
+    "target_max_output_tokens": 4096,
+    "target_reasoning_source": "configs/benchmark_opencode_go_candidates.yaml",
+    "execution_order": "ten complete randomized blocks; every block contains all 36 model-scenario cells",
+    "randomization_seed": 20260727
+  },
+  "analysis": {
+    "independent_unit": "conversation identified by model, scenario and generation repetition",
+    "scenario_treatment": "fixed benchmark block",
+    "judge_outputs_are_not_independent_samples": true,
+    "confidence_interval": "conversation-preserving hierarchical bootstrap",
+    "pairwise_model_comparisons": 15,
+    "multiple_comparison_correction": "Holm within each preregistered metric family",
+    "equivalence_rule": "the entire confidence interval must be inside plus or minus the minimum practical difference",
+    "recovery_is_exploratory": true
+  },
+  "operations": {
+    "use_balance_must_be_false": true,
+    "empty_output_root_required": true,
+    "preserve_successful_outputs_on_429": true,
+    "reduce_workers_on_429": [
+      2,
+      1
+    ],
+    "never_log_api_keys": true,
+    "no_paid_openai_google_anthropic_calls": true
+  }
+}

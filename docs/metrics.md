@@ -10,7 +10,7 @@
 - `major_violations`と`judge_disagreements`は少ないほど良い件数です。
 - `drift_points`は正なら改善、負なら悪化を表します。
 - 恣意的な重み付き総合点は定義せず、5つの主要v2指標の単純平均`RP Summary`を表示します。
-- 正式順位は重大違反ゲートを先に適用し、`RP Summary`だけで重大違反を相殺しません。
+- 現在の総合順位は重大違反ゲートを先に適用し、`RP Summary`だけで重大違反を相殺しません。
 - Leaderboardの各スコアはシナリオ単位のマクロ平均です。会話の長さでは重み付けしません。
 - `null`は0点ではなく、そのシナリオに該当する測定がない、または算出できないことを示します。
 
@@ -25,7 +25,8 @@
 | Robustness | `metrics.robustness_score` | 0〜100または`null` |
 | Recovery | `metrics.recovery_score` | 0〜100または`null` |
 | Major | `major_violations` | 0以上の件数 |
-| Major-free | `major_violation_free_scenarios` | 0〜36シナリオ |
+| Major-free率 | `metrics.major_free_rate` | 0〜100% |
+| Major率 | `metrics.major_violation_rate` | 0以上、100会話あたりの件数 |
 | RP Summary | `rp_summary_score` | 0〜100 |
 
 シナリオレポートの元値は主に`summary`の下へ保存され、Leaderboardでは上表の構造へ
@@ -58,8 +59,9 @@ LLM Judgeが複数ある場合、Judgeごとの数値を平均して一つのル
 - 平均0.40未満: `fail`
 - 全Judgeが`not_applicable`: `not_applicable`
 
-判定対象モデル名はJudgeへ渡しません。現在の完全版ではGPT-5.4 mini、Gemini 3.5 Flash、
-Claude Haiku 4.5の3 Judgeを使用します。
+判定対象モデル名はJudgeへ渡しません。現在の主結果では、v2.1ルーブリックを使うGrok 4.5、
+Hy3、Qwen3.7 Plusの3 Judgeを使用します。過去の単回15モデル評価ではGPT-5.4 mini、
+Gemini 3.5 Flash、Claude Haiku 4.5を使用していました。
 
 ## Leaderboardに表示する指標
 
@@ -169,20 +171,24 @@ Role Packの`adversarial` Probeが指定するターンとルールだけを取�
 
 Challengeでは各ターンの重大ルール違反を数えるため、同じルールが複数ターンで失敗すると
 複数件になります。Baseでは会話全体についてルールごとに1回数えます。Leaderboardでは
-全36シナリオの件数を合計するため、0〜100のスコアとは直接比較できません。
+過去の単回表では全36シナリオの件数を合計していました。現在の反復評価では、モデルごとの
+60会話について100会話あたりのMajor件数へ換算した`Major率`を表示します。同じ会話で複数の
+Majorが発生し得るため、Major率は100を超える場合があります。
 
 ### Major-free
 
-`major_violations == 0`のシナリオ数です。各シナリオでは次の真偽値として保存します。
+`major_violations == 0`だった会話の割合です。各会話では次の真偽値として保存します。
 
 ```text
 major_violation_free = (major_violations == 0)
 ```
 
-Major-freeは正式順位の第1キーになる「重大違反なし」のシナリオ数です。Role Fidelity、
-QualityなどのLeaderboard平均は、重大違反があるシナリオも含めて計算します。
+現在の反復評価では、60会話の真偽値をシナリオごとに平均し、6シナリオをマクロ平均した
+`Major-free率`を総合順位の第1キーにします。Role Fidelity、Qualityなどの平均は、重大違反が
+ある会話も含めて計算します。過去の単回15モデル表にあるMajor-freeは、重大違反なしの
+シナリオ数であり、現在の率と直接比較しません。
 
-### RP Summaryと正式順位
+### RP Summaryと現在の総合順位
 
 `RP Summary`は、5つの主要v2指標を同じ重みで単純平均した0〜100の補助指標です。
 
@@ -191,21 +197,20 @@ RP Summary = mean(Role Fidelity, Quality, Persona Stability, Robustness, Recover
 ```
 
 各軸の違いを残すため、RP Summaryは個別指標を置き換えません。またRobustnessとRecoveryは
-該当Challengeだけから算出されるため、RP Summaryは厳密な能力尺度ではなく、同じ正式プロトコル
-内で並べるための要約値です。BaseのQualityは旧8指標平均を0〜100へ正規化した値なので、
-RP Summaryは旧8指標をQuality経由で間接的に含みます。
+該当Challengeだけから算出されるため、RP Summaryは厳密な能力尺度ではなく、同じ反復条件内で
+並べるための要約値です。現在の主結果はChallenge 6シナリオだけを対象とし、Baseや旧8指標を
+含みません。
 
-正式順位は次の辞書式順序で決めます。
+現在の総合順位は次の辞書式順序で決めます。
 
-1. Major-freeの多い順
-2. Major violationsの少ない順
-3. RP Summaryの高い順
-4. 旧8指標平均の高い順
+1. Major-free率の高い順
+2. Major率の低い順
+3. Challenge RP Summaryの高い順
 
-この順序により、会話品質や他の高得点で重大違反を相殺しません。不完全モデルは従来どおり
-順位対象外です。この順位は同じ正式プロトコル内で比較しやすくするための便宜的な表示であり、
-モデルの絶対的な優劣や、すべての用途での推奨順を示すものではありません。用途に関係する
-個別スコア、track別結果、シナリオレポートを併せて参照してください。
+この順序により、会話品質や他の高得点で重大違反を相殺しません。ただし点順位は統計的優位を
+意味しません。現在の主結果では、事前登録した最小実用差、95%区間、Holm補正後p値をすべて
+満たす比較だけを「優位」とし、点順位とは別に報告します。用途に関係する個別スコア、95%区間、
+順位確率、シナリオ別結果を併せて参照してください。
 
 ## レポートに保存する補助指標
 
@@ -278,7 +283,7 @@ Role Packの構造とtrackの指定方法は
 - 旧8指標はBase 30設定だけで項目別に平均し、8項目をさらに平均
 - track別にはシナリオ数とRole Fidelityを表示
 - RP Summaryを5つの主要v2指標の単純平均として算出
-- Major-free、Major violations、RP Summary、旧8指標平均の順で正式順位を決定
+- 現在の反復評価ではMajor-free率、Major率、Challenge RP Summaryの順で総合順位を決定
 
 ## 設計根拠と参考研究
 

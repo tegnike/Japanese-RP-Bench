@@ -130,6 +130,14 @@ class _GenerationTask:
     run_fingerprint: str
 
 
+def _uses_anthropic_judge_schema(spec: ModelSpec) -> bool:
+    """Use fixed-key/string schemas for native and compatible Messages APIs."""
+
+    return spec.provider == "anthropic" or (
+        spec.provider == "opencode_go" and spec.api_style == "anthropic_messages"
+    )
+
+
 def run_benchmark(
     config_path: str | Path,
     output_path: str | Path,
@@ -215,6 +223,7 @@ def run_benchmark(
         for pack in role_packs
         for scenario in pack.scenarios.values()
     ]
+    jobs = _apply_registered_job_order(jobs, config)
     _preflight_resume_artifacts(output_root, jobs, run_fingerprint)
     jobs.sort(
         key=lambda job: (
@@ -304,6 +313,38 @@ def run_benchmark(
     _write_json(output_root / "manifest.json", manifest)
     _write_json(output_root / "leaderboard.json", leaderboard)
     return leaderboard
+
+
+def _apply_registered_job_order(
+    jobs: Sequence[Tuple[RolePack, ScenarioDefinition, ModelSpec]],
+    config: Mapping[str, Any],
+) -> List[Tuple[RolePack, ScenarioDefinition, ModelSpec]]:
+    """Apply an exact preregistered submission order when one is configured."""
+
+    execution = config.get("execution") or {}
+    if not isinstance(execution, Mapping):
+        raise SchemaError("Benchmark config execution must be an object")
+    registered = execution.get("job_order")
+    if registered is None:
+        return list(jobs)
+    if not isinstance(registered, list) or not registered:
+        raise SchemaError("execution.job_order must be a non-empty list")
+
+    by_key = {
+        "|".join((target.id, pack.id, scenario.id)): (pack, scenario, target)
+        for pack, scenario, target in jobs
+    }
+    keys = [str(value) for value in registered]
+    if len(keys) != len(set(keys)):
+        raise SchemaError("execution.job_order contains duplicate jobs")
+    if set(keys) != set(by_key):
+        missing = sorted(set(by_key) - set(keys))
+        extra = sorted(set(keys) - set(by_key))
+        raise SchemaError(
+            "execution.job_order must contain every configured job exactly once; "
+            f"missing={missing} extra={extra}"
+        )
+    return [by_key[key] for key in keys]
 
 
 def run_generation_pilot(
@@ -1622,7 +1663,7 @@ def _collect_batch_judge_tasks(
                     json_schema=_base_judge_json_schema(
                         role,
                         len(conversation.turns),
-                        fixed_turn_keys=judge_spec.provider == "anthropic",
+                        fixed_turn_keys=_uses_anthropic_judge_schema(judge_spec),
                     ),
                     run_fingerprint=run_fingerprint,
                     conversation_fingerprint=conversation_fingerprint,
@@ -1648,7 +1689,7 @@ def _collect_batch_judge_tasks(
                 scenario,
                 conversation,
                 turn.index,
-                keyed_findings=judge_spec.provider == "anthropic",
+                keyed_findings=_uses_anthropic_judge_schema(judge_spec),
             )
             tasks.append(
                 _BatchJudgeTask(
@@ -1670,8 +1711,8 @@ def _collect_batch_judge_tasks(
                     max_output_tokens=int(config["evaluation"].get("judge_max_output_tokens", 4096)),
                     json_schema=_judge_json_schema(
                         role,
-                        string_scores=judge_spec.provider == "anthropic",
-                        fixed_rule_keys=judge_spec.provider == "anthropic",
+                        string_scores=_uses_anthropic_judge_schema(judge_spec),
+                        fixed_rule_keys=_uses_anthropic_judge_schema(judge_spec),
                     ),
                     run_fingerprint=run_fingerprint,
                     conversation_fingerprint=conversation_fingerprint,
@@ -2049,7 +2090,7 @@ def _generate_base_judgments(
                     json_schema=_base_judge_json_schema(
                         role,
                         len(conversation.turns),
-                        fixed_turn_keys=judge_spec.provider == "anthropic",
+                        fixed_turn_keys=_uses_anthropic_judge_schema(judge_spec),
                     ),
                 )
                 call = result.to_dict()
@@ -2146,7 +2187,7 @@ def _generate_judgments(
                 scenario,
                 conversation,
                 turn.index,
-                keyed_findings=judge_spec.provider == "anthropic",
+                keyed_findings=_uses_anthropic_judge_schema(judge_spec),
             )
             for _ in range(attempts):
                 try:
@@ -2158,8 +2199,8 @@ def _generate_judgments(
                         json_mode=True,
                         json_schema=_judge_json_schema(
                             role,
-                            string_scores=judge_spec.provider == "anthropic",
-                            fixed_rule_keys=judge_spec.provider == "anthropic",
+                            string_scores=_uses_anthropic_judge_schema(judge_spec),
+                            fixed_rule_keys=_uses_anthropic_judge_schema(judge_spec),
                         ),
                     )
                     call = result.to_dict()

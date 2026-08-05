@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "opencode-judge-calibration-20260727-v1",
+  "parent_preregistered_plan": {
+    "path": "configs/opencode_judge_calibration_2026-07-27.json",
+    "sha256": "76a0c708bb9063220de09b0c540fd7fc95c2a7082a139e526baf8a5517204c19"
+  },
+  "authorized_at": "2026-07-27T14:48:54Z",
+  "timing": "after observing structural failures and before the missing candidate repetitions",
+  "purpose": "collect two same-condition repetition attempts for every preregistered Judge candidate, including candidates already ineligible for ensemble selection",
+  "execution": [
+    {
+      "candidate_id": "judge-opencode-kimi-k2.6",
+      "repetition": 2,
+      "run_after": "repetition 1 reaches a terminal manifest state",
+      "run_even_if_previous_repetition_failed": true
+    },
+    {
+      "candidate_id": "judge-opencode-deepseek-v4-flash",
+      "repetition": 2,
+      "run_after": "judge-opencode-kimi-k2.6 repetition 2 reaches a terminal manifest state",
+      "run_even_if_previous_repetition_failed": true
+    }
+  ],
+  "fixed_conditions": {
+    "reasoning": "low",
+    "max_output_tokens": 8192,
+    "workers": 2,
+    "use_balance_confirmed_off": true,
+    "overwrite_existing_artifacts": false
+  },
+  "interpretation": {
+    "original_calibration_gates_unchanged": true,
+    "failed_outputs_retained_as_observations": true,
+    "supplemental_runs_do_not_rescue_original_gate_failures": true,
+    "ensemble_selection_still_requires_the_original_hard_gates": true
+  }
+}

@@ -12,21 +12,8 @@ import {
 } from "./data";
 
 const metricKeys = Object.keys(metricMeta) as ScoreKey[];
-const providerOptions: { value: "all" | Provider; label: string }[] = [
-  { value: "all", label: "すべての経路" },
-  { value: "openai", label: "OpenAI" },
-  { value: "google", label: "Google" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "opencode", label: "OpenCode Go" },
-];
-
-const filterAndSortResults = (provider: "all" | Provider, metric: ScoreKey) => {
-  const filtered =
-    provider === "all"
-      ? results
-      : results.filter((result) => result.provider === provider);
-  return [...filtered].sort((a, b) => getScore(b, metric) - getScore(a, metric));
-};
+const sortResults = (metric: ScoreKey) =>
+  [...results].sort((a, b) => getScore(b, metric) - getScore(a, metric));
 
 const metricEntries = (
   result: ModelResult,
@@ -38,23 +25,13 @@ const metricEntries = (
   ["recovery", result.metrics.recovery],
 ];
 
-const trackLabels: Record<keyof ModelResult["tracks"], string> = {
-  adversarial: "攻撃耐性",
-  coreJa: "通常会話",
-  custom: "カスタム人格",
-  legacyBase: "従来30設定",
-  multiTurn: "複数ターン",
-};
-
-const legacyLabels: Record<string, string> = {
-  "Roleplay Adherence": "ロールプレイ追従",
-  Consistency: "一貫性",
-  "Contextual Understanding": "文脈理解",
-  Expressiveness: "表現力",
-  Creativity: "創造性",
-  "Naturalness of Japanese": "日本語の自然さ",
-  "Enjoyment of the Dialogue": "会話の楽しさ",
-  "Appropriateness of Turn-Taking": "ターン進行",
+const scenarioLabels: Record<keyof ModelResult["scenarios"], string> = {
+  careerMentor: "キャリアメンター",
+  windGuide: "風の案内人",
+  museumCurator: "美術館キュレーター",
+  teaRoom: "茶房・12ターン",
+  nikechanBaseline: "AIニケ・通常",
+  nikechanAdversarial: "AIニケ・人格置換",
 };
 
 function ScoreBar({
@@ -112,27 +89,32 @@ function ModelDetail({
 
       <div className="gate-grid">
         <div>
-          <span>重大違反なし</span>
+          <span>Major-free率</span>
           <strong>
-            {model.majorFree}
-            <small> / {model.scenarios}</small>
+            {model.majorFreeRate.toFixed(1)}
+            <small> %</small>
           </strong>
         </div>
         <div>
-          <span>重大違反</span>
-          <strong className={model.major > 5 ? "warning" : ""}>
-            {model.major}
-            <small> 件</small>
+          <span>Major率</span>
+          <strong className={model.majorRate > 25 ? "warning" : ""}>
+            {model.majorRate.toFixed(1)}
+            <small> / 100会話</small>
           </strong>
         </div>
         <div>
-          <span>旧8指標平均</span>
+          <span>1位確率</span>
           <strong>
-            {model.legacyAverage.toFixed(3)}
-            <small> / 5</small>
+            {model.firstPlaceProbability.toFixed(1)}
+            <small> %</small>
           </strong>
         </div>
       </div>
+
+      <p className="incomplete-note">
+        RP Summary 95%区間: {model.summaryCi95[0].toFixed(1)}–
+        {model.summaryCi95[1].toFixed(1)}
+      </p>
 
       <section className="detail-section axes-section">
         <div className="section-heading">
@@ -210,18 +192,18 @@ function ModelDetail({
       <section className="detail-section tracks-section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">SCENARIO TYPES</span>
-            <h3>シナリオ種別ごとの役柄追従度</h3>
+            <span className="eyebrow">6 SCENARIOS</span>
+            <h3>シナリオ別RP Summary</h3>
           </div>
         </div>
         <div className="track-grid">
-          {(Object.entries(model.tracks) as [keyof ModelResult["tracks"], number][]).map(
+          {(Object.entries(model.scenarios) as [keyof ModelResult["scenarios"], number][]).map(
             ([key, value]) => {
-              const comparison = compareModel?.tracks[key];
+              const comparison = compareModel?.scenarios[key];
               const difference = comparison === undefined ? null : value - comparison;
               return (
                 <div className="track-row" key={key}>
-                  <span>{trackLabels[key]}</span>
+                  <span>{scenarioLabels[key]}</span>
                   <div className="track-bars">
                     <ScoreBar
                       value={value}
@@ -247,59 +229,16 @@ function ModelDetail({
           )}
         </div>
       </section>
-
-      <section className="detail-section legacy-details">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">LEGACY 8</span>
-            <h3>旧8指標の内訳</h3>
-          </div>
-        </div>
-        <div className="legacy-list">
-          {Object.entries(model.legacyDimensions).map(([label, value]) => {
-            const comparison = compareModel?.legacyDimensions[label];
-            const difference = comparison === undefined ? null : value - comparison;
-            return (
-              <div className="legacy-row" key={label}>
-                <span>{legacyLabels[label] ?? label}</span>
-                <div className="legacy-bars">
-                  <ScoreBar
-                    value={value * 20}
-                    tone="violet"
-                    compact={Boolean(compareModel)}
-                  />
-                  {comparison !== undefined && (
-                    <ScoreBar value={comparison * 20} tone="cyan" compact />
-                  )}
-                </div>
-                <div className="legacy-value-stack">
-                  <strong>{value.toFixed(2)}</strong>
-                  {difference !== null && (
-                    <small className={difference >= 0 ? "positive" : "negative"}>
-                      {difference >= 0 ? "+" : ""}
-                      {difference.toFixed(2)}
-                    </small>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
     </aside>
   );
 }
 
 export function Dashboard() {
   const [metric, setMetric] = useState<ScoreKey>("summary");
-  const [provider, setProvider] = useState<"all" | Provider>("all");
   const [selectedId, setSelectedId] = useState(results[0].id);
   const [compareId, setCompareId] = useState(results[1].id);
 
-  const visibleResults = useMemo(
-    () => filterAndSortResults(provider, metric),
-    [metric, provider],
-  );
+  const visibleResults = useMemo(() => sortResults(metric), [metric]);
 
   const selected =
     visibleResults.find((result) => result.id === selectedId) ??
@@ -319,47 +258,19 @@ export function Dashboard() {
     }
   };
 
-  const selectProvider = (nextProvider: "all" | Provider) => {
-    const nextResults = filterAndSortResults(nextProvider, metric);
-    const selectedIsVisible = nextResults.some((result) => result.id === selectedId);
-
-    setProvider(nextProvider);
-    if (!selectedIsVisible && nextResults[0]) {
-      setSelectedId(nextResults[0].id);
-      if (compareId === nextResults[0].id) {
-        setCompareId("none");
-      }
-    }
-  };
-
   return (
     <main className="results-page">
       <section className="leaderboard-shell">
         <div className="leaderboard-intro">
           <div>
-            <h1>日本語ロールプレイLLM 最新ベンチマーク結果</h1>
+            <h1>日本語ロールプレイLLM 反復評価</h1>
             <p>
-              {benchmarkMeta.updatedAt} · 正式{benchmarkMeta.modelCount}モデル + 参考
-              {benchmarkMeta.referenceModelCount}モデル · 最大
-              {benchmarkMeta.scenariosPerModel}シナリオ / モデル
+              {benchmarkMeta.updatedAt} · {benchmarkMeta.modelCount}モデル ×
+              {benchmarkMeta.scenariosPerModel}シナリオ ×
+              {benchmarkMeta.generationsPerScenario}生成 · {benchmarkMeta.judgeCount} Judge
             </p>
-            <p className="incomplete-note">{benchmarkMeta.incompleteNote}</p>
+            <p className="incomplete-note">{benchmarkMeta.note}</p>
           </div>
-          <label className="provider-filter">
-            <span>評価経路</span>
-            <select
-              value={provider}
-              onChange={(event) =>
-                selectProvider(event.target.value as "all" | Provider)
-              }
-            >
-              {providerOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
         <div className="metric-tabs" role="tablist" aria-label="表示する評価指標">
@@ -424,9 +335,7 @@ export function Dashboard() {
                         <strong>{result.name}</strong>
                       </span>
                       <small>
-                        正式順位 {result.rank === null ? "-" : `#${result.rank}`} · Major{" "}
-                        {result.major}
-                        {result.reference ? " · 参考値" : ""}
+                        総合順位 #{result.rank} · Major-free {result.majorFreeRate.toFixed(1)}%
                       </small>
                     </span>
                     <span className="chart-bar-area">
@@ -443,8 +352,8 @@ export function Dashboard() {
             </div>
             <p className="chart-note">
               左端は「{metricMeta[metric].short}」の順位です。グラフはスコアの高い順に並び、
-              各モデル名の下に重大違反ゲートを含む正式順位を表示しています。参考評価の
-              Claude Fable 5は正式順位を「-」としています。
+              各モデル名の下にMajor-free率、Major率、RP Summaryを順に使った総合順位を表示します。
+              8モデル28ペア×8指標の比較では、Holm補正後に優位と判定できた組み合わせは0件です。
             </p>
           </section>
 

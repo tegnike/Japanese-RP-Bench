@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "opencode-judge-calibration-20260727-v1",
+  "parent_preregistered_plan": {
+    "path": "configs/opencode_judge_calibration_2026-07-27.json",
+    "sha256": "76a0c708bb9063220de09b0c540fd7fc95c2a7082a139e526baf8a5517204c19"
+  },
+  "recorded_at": "2026-07-27T14:30:08Z",
+  "timing": "after structural execution outcomes but before any calibration metric aggregation",
+  "purpose": "mechanical clarification of preregistered reference-distribution and same-family gates",
+  "continuous_unit": "target_model_mean_across_six_challenge_scenarios",
+  "continuous_reference_gate_reduction": "worst_case_across_official_round_01_round_02",
+  "candidate_repetition_gate_reduction": "both_repetition_alignments_must_pass",
+  "major_unit": "conversation",
+  "major_reference_label": "majority_vote_across_official_round_01_round_02",
+  "same_family_leave_one_judge_out_applies_in": "holdout_only",
+  "changes_to_registered_thresholds": false
+}

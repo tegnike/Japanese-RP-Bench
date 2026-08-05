@@ -1,0 +1,312 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "opencode-challenge-repeatability-20260727-v1",
+  "status": "preregistered_before_target_pilot_and_repeatability_calls",
+  "source_of_truth": "docs/opencode-challenge-repeatability-plan-2026-07-27.md",
+  "official_leaderboard_changes": false,
+  "scope": "challenge_repeatability_track_only",
+  "role_packs": [
+    "role_packs/core-ja",
+    "role_packs/adversarial-ja",
+    "role_packs/multi-turn-ja",
+    "role_packs/custom/nikechan"
+  ],
+  "challenge_scenario_ids": [
+    "career_mentor_baseline",
+    "wind_guide_baseline",
+    "museum_curator_injection",
+    "tea_room_twelve_turns",
+    "nikechan_baseline",
+    "nikechan_adversarial"
+  ],
+  "design": {
+    "registered_blocks": 10,
+    "checkpoint_after_blocks": 5,
+    "checkpoint_is_operational_only": true,
+    "targets_per_block": 8,
+    "scenarios_per_target": 6,
+    "conversations_per_block": 48,
+    "target_responses_per_block": 216,
+    "judge_outputs_per_block": 648,
+    "independent_sample_unit": "conversation",
+    "turns_are_independent_samples": false,
+    "judge_outputs_are_independent_target_samples": false,
+    "randomization": {
+      "seed": 2026072701,
+      "algorithm": "sha256(seed|block|target_id|pack_id|scenario_id)_ascending",
+      "same_schedule_on_resume": true
+    }
+  },
+  "generation_policy": {
+    "target_max_output_tokens": 4096,
+    "sampling_parameters": "omitted_provider_default",
+    "use_balance": false,
+    "rate_limit_policy": "preserve_successes_and_resume_missing_requests_with_the_same_settings",
+    "sync_rate_limit_max_attempts": 1,
+    "automatic_balance_fallback": false
+  },
+  "target_reasoning_pilot": {
+    "models": [
+      "opencode-go-grok-4.5",
+      "opencode-go-hy3"
+    ],
+    "scenario_ids": [
+      "career_mentor_baseline",
+      "tea_room_twelve_turns"
+    ],
+    "turn_selection": "first_user_turn_as_an_independent_single_turn_request",
+    "candidate_order": [
+      "none",
+      "low"
+    ],
+    "requests_per_model_per_candidate": 2,
+    "selection_rule": "select_the_first_candidate_with_two_nonempty_natural_nontruncated_responses_at_4096_tokens",
+    "fallback_rule": "advance_only_after_an_explicit_reasoning_setting_rejection; rate_limits_and_transport_errors_resume_the_same_candidate",
+    "failure_rule": "stop_if_neither_candidate_passes_or_if_a_response_is_truncated_or_bodyless; do_not_raise_the_token_limit"
+  },
+  "protocol_pilot": {
+    "required_before_registered_blocks": true,
+    "scope": "one_extra_complete_8_target_by_6_scenario_block_not_included_in_the_registered_sample",
+    "expected_conversations": 48,
+    "expected_target_responses": 216,
+    "expected_judge_outputs": 648,
+    "pass_rule": "all_conversations_and_judgments_complete_with_natural_target_termination_nonempty_bodies_exact_reasoning_payloads_and_zero_unresolved_schema_failures"
+  },
+  "targets": [
+    {
+      "id": "opencode-go-grok-4.5",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "grok-4.5",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning_selection": "target_reasoning_pilot",
+      "input_price_per_million": 2.0,
+      "output_price_per_million": 6.0
+    },
+    {
+      "id": "opencode-go-hy3",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "hy3",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning_selection": "target_reasoning_pilot",
+      "input_price_per_million": 0.14,
+      "output_price_per_million": 0.58
+    },
+    {
+      "id": "opencode-go-qwen3.7-max",
+      "provider": "opencode_go",
+      "api_style": "anthropic_messages",
+      "model": "qwen3.7-max",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "none",
+      "reasoning_request": {
+        "thinking": {
+          "type": "disabled"
+        }
+      },
+      "input_price_per_million": 2.5,
+      "output_price_per_million": 7.5
+    },
+    {
+      "id": "opencode-go-kimi-k3",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "kimi-k3",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "none",
+      "reasoning_request": {
+        "reasoning_effort": "none"
+      },
+      "input_price_per_million": 3.0,
+      "output_price_per_million": 15.0
+    },
+    {
+      "id": "opencode-go-deepseek-v4-pro",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "deepseek-v4-pro",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 0.435,
+      "output_price_per_million": 0.87
+    },
+    {
+      "id": "opencode-go-minimax-m3",
+      "provider": "opencode_go",
+      "api_style": "anthropic_messages",
+      "model": "minimax-m3",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "none",
+      "reasoning_request": {
+        "thinking": {
+          "type": "disabled"
+        }
+      },
+      "input_price_per_million": 0.3,
+      "output_price_per_million": 1.2
+    },
+    {
+      "id": "opencode-go-glm-5.2",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "glm-5.2",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "none",
+      "reasoning_request": {
+        "reasoning_effort": "none"
+      },
+      "input_price_per_million": 1.4,
+      "output_price_per_million": 4.4
+    },
+    {
+      "id": "opencode-go-mimo-v2.5-pro",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "mimo-v2.5-pro",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "none",
+      "reasoning_request": {
+        "reasoning_effort": "none"
+      },
+      "input_price_per_million": 0.435,
+      "output_price_per_million": 0.87
+    }
+  ],
+  "judges": [
+    {
+      "id": "judge-opencode-grok-4.5",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "grok-4.5",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 2.0,
+      "output_price_per_million": 6.0
+    },
+    {
+      "id": "judge-opencode-hy3",
+      "provider": "opencode_go",
+      "api_style": "openai_chat",
+      "model": "hy3",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "reasoning_effort": "low"
+      },
+      "input_price_per_million": 0.14,
+      "output_price_per_million": 0.58
+    },
+    {
+      "id": "judge-opencode-qwen3.7-plus",
+      "provider": "opencode_go",
+      "api_style": "anthropic_messages",
+      "model": "qwen3.7-plus",
+      "api_key_env": "OPENCODE_GO_API_KEY",
+      "reasoning": "low",
+      "reasoning_request": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 1024
+        }
+      },
+      "input_price_per_million": 0.4,
+      "output_price_per_million": 1.6
+    }
+  ],
+  "judge_policy": {
+    "abstract_reasoning": "low",
+    "challenge_max_output_tokens": 8192,
+    "sampling_parameters": "omitted_provider_default",
+    "blind_target_identity": true,
+    "same_exact_model_id_as_target_allowed": true,
+    "minimum_judges_per_turn": 3,
+    "max_attempts_per_schema_invalid_request": 3,
+    "unresolved_failures": 0,
+    "truncated_outputs": 0,
+    "report_each_judge": true,
+    "report_disagreements": true,
+    "leave_one_judge_out_for_all_targets": true
+  },
+  "expected_outputs": {
+    "registered_conversations": 480,
+    "registered_target_responses": 2160,
+    "registered_judge_outputs": 6480,
+    "model_scenario_generation_cells": 48,
+    "generations_per_cell": 10,
+    "pairwise_model_comparisons_per_metric": 28
+  },
+  "analysis": {
+    "metrics": [
+      "role_fidelity_score",
+      "conversation_quality_score",
+      "persona_stability_score",
+      "robustness_score",
+      "recovery_score",
+      "major_violation_rate",
+      "major_free_rate",
+      "challenge_rp_summary"
+    ],
+    "scenario_macro_average": true,
+    "robustness_and_recovery_scenarios": [
+      "wind_guide_baseline",
+      "museum_curator_injection",
+      "tea_room_twelve_turns",
+      "nikechan_adversarial"
+    ],
+    "bootstrap": {
+      "method": "paired_hierarchical_block_and_scenario_bootstrap",
+      "replicates": 10000,
+      "seed": 2026072702,
+      "confidence_interval": 0.95
+    },
+    "minimum_practical_difference": {
+      "continuous_score_points": 3.0,
+      "rate_percentage_points": 10.0
+    },
+    "superiority_rule": "directionally_correct_point_difference_meets_the_minimum_practical_difference_and_the_95_percent_interval_excludes_zero_and_the_two_sided_holm_adjusted_p_value_is_below_0.05",
+    "equivalence_rule": "the_entire_90_percent_difference_interval_is_inside_the_registered_practical_difference_bounds_and_the_holm_adjusted_equivalence_p_value_is_below_0.05",
+    "indeterminate_rule": "all_other_cases_including_a_95_percent_interval_that_merely_crosses_zero",
+    "multiple_comparisons": {
+      "method": "holm",
+      "family": "all_28_model_pairs_separately_within_each_metric",
+      "alpha": 0.05
+    },
+    "judge_analysis": {
+      "judge_specific_results": true,
+      "within_conversation_judge_variance": true,
+      "between_conversation_generation_variance": true,
+      "leave_one_judge_out": true,
+      "ensemble_mean_is_ground_truth": false
+    },
+    "rank_analysis": {
+      "ranking_keys": [
+        "major_free_rate_desc",
+        "major_violation_rate_asc",
+        "challenge_rp_summary_desc"
+      ],
+      "report_rank_probabilities": true
+    }
+  },
+  "sample_extension": {
+    "decision_timing": "after_complete_10_block_analysis_before_public_claims",
+    "maximum_blocks": 20,
+    "extend_all_targets_and_scenarios_together": true,
+    "no_selective_model_extension": true,
+    "trigger": "extend_if_the_top_decision_set_contains_at_least_two_models_and_for_any_pair_in_that_set_the_95_percent_challenge_rp_summary_interval_contains_zero_and_also_extends_beyond_plus_or_minus_3_points_or_the_95_percent_major_free_rate_interval_contains_zero_and_also_extends_beyond_plus_or_minus_10_percentage_points",
+    "top_decision_set": "models_with_rank_one_probability_at_least_0.20_or_a_challenge_rp_summary_point_estimate_within_3_points_of_the_best_model",
+    "no_second_extension": true
+  },
+  "publication": {
+    "label": "Japanese-RP-Bench Challenge Repeatability Track",
+    "not_a_general_japanese_roleplay_leaderboard": true,
+    "do_not_update_readme_leaderboard_or_dashboard_automatically": true,
+    "place_scope_and_uncertainty_before_result_tables": true
+  }
+}

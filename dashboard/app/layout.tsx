@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Japanese-RP-Bench v2",
-  description: "日本語ロールプレイLLMの最新正式結果を比較するローカルダッシュボード。",
+  description: "日本語ロールプレイLLMの反復評価を比較するダッシュボード。",
 };
 
 export default function RootLayout({

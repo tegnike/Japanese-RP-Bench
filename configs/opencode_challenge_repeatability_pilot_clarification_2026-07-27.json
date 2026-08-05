@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "opencode-challenge-repeatability-20260727-v1",
+  "parent_preregistered_plan": {
+    "path": "configs/opencode_challenge_repeatability_2026-07-27.json",
+    "sha256": "973a016d4980bcc68d48077164214a6fcdceb4dfbf33794a90b67d740bc9ab30"
+  },
+  "recorded_at": "2026-07-27T20:28:00Z",
+  "timing": "after_grok_none_returned_no_response_and_before_any_successful_target_pilot_response",
+  "observed_error": "Provider HTTP 400: Error from provider (Console Go): Upstream request failed",
+  "purpose": "resolve_an_opaque_provider_error_that_does_not_name_the_rejected_reasoning_field",
+  "clarification": "when_none_returns_the_exact_observed_opaque_400_advance_to_low_but_classify_none_as_unsupported_only_if_low_then_passes_both_registered_requests",
+  "if_low_does_not_pass": "the_target_pilot_fails_and_the_opaque_400_is_not_claimed_as_a_confirmed_reasoning_rejection",
+  "changes_to_models_scenarios_token_limits_analysis_or_thresholds": false
+}
