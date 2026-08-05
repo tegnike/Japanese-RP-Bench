@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -30,7 +31,8 @@ from japanese_rp_bench.v2.opencode_repeatability import (
     audit_run,
 )
 from japanese_rp_bench.v2.runner import run_benchmark
-from japanese_rp_bench.v2.schemas import SchemaError
+from japanese_rp_bench.v2.runner import _generate_judgments, _load_model_specs
+from japanese_rp_bench.v2.schemas import Conversation, SchemaError
 
 
 DEFAULT_PLAN = Path("configs/opencode_qwen38_repeatability_extension_2026-08-05.json")
@@ -324,6 +326,84 @@ def verify(repo: Path, plan_path: Path, output: Path) -> dict[str, Any]:
     return result
 
 
+def run_single_judge(
+    repo: Path,
+    plan_path: Path,
+    output: Path,
+    block: int,
+    judge_id: str,
+    workers: int,
+    confirm_use_balance_off: bool,
+) -> dict[str, Any]:
+    """Resume one fixed Judge independently without changing frozen conversations."""
+
+    if not confirm_use_balance_off:
+        raise SchemaError("Judge resume requires explicit confirmation that Use balance is OFF")
+    plan = _load_plan(plan_path)
+    validate_plan(repo, plan_path, plan)
+    _require_prepared(output, plan_path)
+    block_id = f"block-{block:02d}"
+    config_path = output / "runtime-configs" / f"{block_id}.yaml"
+    if not config_path.is_file():
+        raise SchemaError(f"Runtime config is missing for {block_id}")
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    judges = {spec.id: spec for spec in _load_model_specs(config, "judges")}
+    if judge_id not in judges:
+        raise SchemaError(f"Unknown fixed Judge: {judge_id}")
+    run_root = output / ("protocol-pilot/run" if block == 0 else f"blocks/{block_id}")
+    run_manifest = _read_json(run_root / "manifest.json")
+    run_fingerprint = str(run_manifest["run_fingerprint"])
+    _, by_scenario = _load_packs(repo, plan)
+    conversation_paths = sorted((run_root / "conversations" / TARGET_ID).glob("*.json"))
+    if len(conversation_paths) != 6:
+        raise SchemaError(f"Expected six frozen conversations for {block_id}")
+    def judge_conversation(conversation_path: Path) -> None:
+        conversation = Conversation.from_dict(_read_json(conversation_path))
+        scenario = by_scenario[conversation.scenario_id].scenarios[conversation.scenario_id]
+        role = by_scenario[conversation.scenario_id].roles[scenario.role_id]
+        judgment_path = (
+            run_root
+            / "judgments"
+            / TARGET_ID
+            / conversation_path.with_suffix(".jsonl").name
+        )
+        _generate_judgments(
+            judgment_path,
+            role,
+            scenario,
+            conversation,
+            [judges[judge_id]],
+            int(config["evaluation"]["judge_max_output_tokens"]),
+            run_fingerprint,
+            audit_rubric=config["evaluation"]["challenge_judge_rubric"],
+        )
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(judge_conversation, path) for path in conversation_paths]
+        for future in as_completed(futures):
+            future.result()
+    judgment_paths, _ = _judgment_artifact_paths(run_root)
+    completed = sum(
+        str(item.get("judge_id")) == judge_id
+        for path in judgment_paths
+        for item in _read_jsonl(path)
+    )
+    result = {
+        "schema_version": "1.0",
+        "updated_at": _now(),
+        "block": block_id,
+        "judge_id": judge_id,
+        "completed": completed,
+        "expected": 27,
+        "passed": completed == 27,
+        "rubric_version": "challenge-judge-audit-v2.1",
+    }
+    progress_path = output / ("protocol-pilot" if block == 0 else f"blocks/{block_id}") / f"{judge_id}-progress.json"
+    _write_json(progress_path, result)
+    if not result["passed"]:
+        raise SchemaError(f"Judge {judge_id} is incomplete; resume with the same command")
+    return result
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=_repo_root())
@@ -346,6 +426,12 @@ def _parser() -> argparse.ArgumentParser:
     block.add_argument("--confirm-use-balance-off", action="store_true")
     check = sub.add_parser("verify")
     check.add_argument("--output", type=Path, required=True)
+    judge = sub.add_parser("run-judge")
+    judge.add_argument("--output", type=Path, required=True)
+    judge.add_argument("--block", type=int, required=True, choices=range(0, 11))
+    judge.add_argument("--judge", required=True, choices=JUDGE_IDS)
+    judge.add_argument("--workers", type=int, default=2)
+    judge.add_argument("--confirm-use-balance-off", action="store_true")
     return parser
 
 
@@ -363,6 +449,16 @@ def main() -> None:
         result = _run(repo, plan_path, args.output.resolve(), 0, args.workers, args.confirm_use_balance_off)
     elif args.command == "run-block":
         result = _run(repo, plan_path, args.output.resolve(), args.block, args.workers, args.confirm_use_balance_off)
+    elif args.command == "run-judge":
+        result = run_single_judge(
+            repo,
+            plan_path,
+            args.output.resolve(),
+            args.block,
+            args.judge,
+            args.workers,
+            args.confirm_use_balance_off,
+        )
     else:
         result = verify(repo, plan_path, args.output.resolve())
     print(json.dumps(result, ensure_ascii=False, indent=2))
