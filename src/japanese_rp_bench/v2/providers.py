@@ -80,7 +80,7 @@ class ModelSpec:
         if missing:
             raise SchemaError(f"Model spec is missing: {', '.join(missing)}")
         provider = str(data["provider"])
-        if provider not in {"openai", "gemini", "anthropic", "opencode_go"}:
+        if provider not in {"openai", "gemini", "anthropic", "opencode_go", "xai"}:
             raise SchemaError(f"Unsupported provider: {provider}")
         api_style = str(data.get("api_style", ""))
         if provider == "opencode_go" and api_style not in {
@@ -134,6 +134,7 @@ class GenerationResult:
     incomplete_reason: str = ""
     reasoning_config: Dict[str, Any] = field(default_factory=dict)
     requested_max_output_tokens: int = 0
+    provider_reported_cost_usd: float | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -150,11 +151,21 @@ def generate_text(
     api_key = os.environ.get(spec.api_key_env)
     if not api_key:
         raise ProviderError(f"Required environment variable is not set: {spec.api_key_env}")
-    attempts = 1 if spec.provider in {"gemini", "anthropic"} else 3
+    attempts = 1 if spec.provider in {"gemini", "anthropic", "xai"} else 3
     for attempt in range(1, attempts + 1):
         try:
             if spec.provider == "openai":
                 return _generate_openai(
+                    spec,
+                    api_key,
+                    system_prompt,
+                    messages,
+                    max_output_tokens,
+                    json_mode,
+                    json_schema,
+                )
+            if spec.provider == "xai":
+                return _generate_xai(
                     spec,
                     api_key,
                     system_prompt,
@@ -227,6 +238,8 @@ def _validate_reasoning_setting(
     """Reject ambiguous or unsupported benchmark reasoning controls early."""
     if provider == "openai":
         allowed = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+    elif provider == "xai":
+        allowed = {"low", "medium", "high"}
     elif provider == "gemini":
         allowed = {"minimal", "low", "medium", "high"}
     elif provider == "anthropic" or (
@@ -270,7 +283,7 @@ def _reasoning_request_config(spec: ModelSpec) -> Dict[str, Any]:
         spec.reasoning,
         model=spec.model,
     )
-    if spec.provider == "openai":
+    if spec.provider in {"openai", "xai"}:
         return {"reasoning": {"effort": spec.reasoning}}
     if spec.provider == "gemini":
         return {"thinkingConfig": {"thinkingLevel": spec.reasoning}}
@@ -322,6 +335,44 @@ def _generate_openai(
     )
     if response.get("error"):
         raise ProviderError(f"OpenAI API error: {_safe_error(response['error'])}")
+    return _parse_openai_response(
+        spec,
+        response,
+        requested_max_output_tokens=max_output_tokens,
+    )
+
+
+def _generate_xai(
+    spec: ModelSpec,
+    api_key: str,
+    system_prompt: str,
+    messages: Sequence[Mapping[str, str]],
+    max_output_tokens: int,
+    json_mode: bool,
+    json_schema: Mapping[str, Any] | None,
+) -> GenerationResult:
+    """Call the official xAI Responses API without paid-request retries."""
+
+    payload = _build_openai_payload(
+        spec,
+        system_prompt,
+        messages,
+        max_output_tokens,
+        json_mode,
+        json_schema,
+    )
+    payload["input"] = [
+        {"role": "system", "content": payload.pop("instructions")},
+        *payload["input"],
+    ]
+    response = _post_json(
+        "https://api.x.ai/v1/responses",
+        payload,
+        {"Authorization": f"Bearer {api_key}"},
+        attempts=1,
+    )
+    if response.get("error"):
+        raise ProviderError(f"xAI API error: {_safe_error(response['error'])}")
     return _parse_openai_response(
         spec,
         response,
@@ -381,6 +432,10 @@ def _parse_openai_response(
     usage = response.get("usage") or {}
     input_details = usage.get("input_tokens_details") or {}
     output_details = usage.get("output_tokens_details") or {}
+    cost_ticks = usage.get("cost_in_usd_ticks")
+    provider_reported_cost_usd = (
+        float(cost_ticks) / 10_000_000_000 if cost_ticks is not None else None
+    )
     status = str(response.get("status", ""))
     incomplete_details = response.get("incomplete_details") or {}
     incomplete_reason = str(incomplete_details.get("reason", ""))
@@ -413,8 +468,13 @@ def _parse_openai_response(
         incomplete_reason=incomplete_reason,
         reasoning_config=_reasoning_request_config(spec),
         requested_max_output_tokens=requested_max_output_tokens,
+        provider_reported_cost_usd=provider_reported_cost_usd,
     )
-    return _validate_generation_result(result, "OpenAI response did not contain output text")
+    provider_name = "xAI" if spec.provider == "xai" else "OpenAI"
+    return _validate_generation_result(
+        result,
+        f"{provider_name} response did not contain output text",
+    )
 
 
 def _generate_gemini(

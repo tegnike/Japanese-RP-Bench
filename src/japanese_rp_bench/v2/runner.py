@@ -82,7 +82,7 @@ LEGACY_SUMMARY_METRIC_ALIASES = {
     "role_fidelity_score": "core_fidelity_score",
     "persona_stability_score": "long_term_stability_score",
 }
-EXPENSIVE_JUDGE_PROVIDERS = {"gemini", "anthropic"}
+EXPENSIVE_JUDGE_PROVIDERS = {"gemini", "anthropic", "xai"}
 RUN_FINGERPRINT_SCHEMA_VERSION = "1.0"
 FINGERPRINT_SOURCE_FILES = (
     "base.py",

@@ -32,6 +32,7 @@ from japanese_rp_bench.v2.opencode_repeatability import (
 )
 from japanese_rp_bench.v2.runner import run_benchmark
 from japanese_rp_bench.v2.runner import _generate_judgments, _load_model_specs
+from japanese_rp_bench.v2.providers import ModelSpec
 from japanese_rp_bench.v2.schemas import Conversation, SchemaError
 
 
@@ -53,6 +54,90 @@ def _load_plan(path: Path) -> dict[str, Any]:
     if not isinstance(plan, dict):
         raise SchemaError("Extension plan must be a JSON object")
     return plan
+
+
+def _load_judge_amendment(
+    repo: Path,
+    amendment_path: Path,
+    plan_path: Path,
+) -> tuple[dict[str, Any], ModelSpec]:
+    amendment = _read_json(amendment_path)
+    if amendment.get("schema_version") != "1.0":
+        raise SchemaError("Unsupported Judge execution amendment schema")
+    base = amendment.get("base_plan")
+    if not isinstance(base, Mapping):
+        raise SchemaError("Judge execution amendment requires base_plan")
+    expected_plan = repo / str(base.get("path", ""))
+    if expected_plan.resolve() != plan_path.resolve():
+        raise SchemaError("Judge execution amendment targets a different plan")
+    if str(base.get("sha256", "")) != _sha256_file(plan_path):
+        raise SchemaError("Judge execution amendment base plan hash mismatch")
+    override = amendment.get("judge_override")
+    if not isinstance(override, Mapping):
+        raise SchemaError("Judge execution amendment requires judge_override")
+    spec = ModelSpec.from_dict(override)
+    if (
+        spec.id != "judge-opencode-grok-4.5"
+        or spec.provider != "xai"
+        or spec.model != "grok-4.5"
+        or spec.api_key_env != "XAI_API_KEY"
+        or spec.reasoning != "low"
+        or spec.input_price_per_million != 2.0
+        or spec.output_price_per_million != 6.0
+    ):
+        raise SchemaError("Judge execution amendment must retain Grok 4.5 low via xAI")
+    controls = amendment.get("cost_controls") or {}
+    if (
+        int(controls.get("automatic_request_retries", -1)) != 0
+        or int(controls.get("judge_parse_retries", -1)) != 0
+        or int(controls.get("workers", 0)) != 1
+    ):
+        raise SchemaError("Judge execution amendment cost controls have drifted")
+    return amendment, spec
+
+
+def _record_judge_amendment(
+    output: Path,
+    amendment_path: Path,
+    amendment: Mapping[str, Any],
+) -> None:
+    manifest = _read_json(output / "manifest.json")
+    record = {
+        "id": str(amendment["amendment_id"]),
+        "path": str(amendment_path),
+        "sha256": _sha256_file(amendment_path),
+        "provider": "xai",
+        "model": "grok-4.5",
+        "reasoning": "low",
+    }
+    existing = manifest.get("judge_execution_amendment")
+    if existing is not None and existing != record:
+        raise SchemaError("Output already records a different Judge execution amendment")
+    manifest["judge_execution_amendment"] = record
+    _write_json(output / "manifest.json", manifest)
+
+
+def _apply_judge_amendment(
+    config: dict[str, Any],
+    amendment_path: Path,
+    amendment: Mapping[str, Any],
+) -> None:
+    judges = config.get("models", {}).get("judges", [])
+    override = dict(amendment["judge_override"])
+    matches = [index for index, value in enumerate(judges) if value.get("id") == override["id"]]
+    if len(matches) != 1:
+        raise SchemaError("Runtime config must contain exactly one Grok 4.5 Judge")
+    judges[matches[0]] = override
+    config["execution_amendments"] = [
+        {
+            "id": str(amendment["amendment_id"]),
+            "path": str(amendment_path),
+            "sha256": _sha256_file(amendment_path),
+        }
+    ]
+    config["notes"].append(
+        "Grok 4.5 Judge routed through the official xAI API under a recorded execution amendment."
+    )
 
 
 def validate_plan(repo: Path, plan_path: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -208,12 +293,16 @@ def _runtime(
     repo: Path,
     plan: Mapping[str, Any],
     schedule: list[str],
+    amendment_path: Path | None = None,
+    amendment: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     config = _runtime_config(repo, plan, schedule, {"selected_reasoning": {}})
     parent = plan["parent_experiment"]
     v21_plan = _read_json(repo / str(parent["judge_v21_plan_path"]))
     config["evaluation"]["challenge_judge_rubric"] = resolve_v21_rubric(repo, v21_plan)
     config["notes"].append("Single-model Qwen3.8 Max extension; judgments use v2.1 directly.")
+    if amendment_path is not None and amendment is not None:
+        _apply_judge_amendment(config, amendment_path, amendment)
     return config
 
 
@@ -229,6 +318,63 @@ def _audit_extension(run_root: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
     return audit
 
 
+def _plan_with_judge_amendment(
+    plan: Mapping[str, Any],
+    amendment: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    effective = json.loads(json.dumps(plan))
+    if amendment is None:
+        return effective
+    override = dict(amendment["judge_override"])
+    override["reasoning_request"] = {"reasoning": {"effort": "low"}}
+    judges = effective["judges"]
+    matches = [index for index, value in enumerate(judges) if value.get("id") == override["id"]]
+    if len(matches) != 1:
+        raise SchemaError("Plan must contain exactly one amended Grok 4.5 Judge")
+    judges[matches[0]] = override
+    return effective
+
+
+def _audit_extension_with_amendment(
+    run_root: Path,
+    plan: Mapping[str, Any],
+    amendment: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    return _audit_extension(run_root, _plan_with_judge_amendment(plan, amendment))
+
+
+def close_protocol_pilot(
+    repo: Path,
+    plan_path: Path,
+    output: Path,
+    amendment_path: Path,
+) -> dict[str, Any]:
+    """Close an already complete mixed-route pilot without making API calls."""
+
+    plan = _load_plan(plan_path)
+    validate_plan(repo, plan_path, plan)
+    _require_prepared(output, plan_path)
+    amendment, _ = _load_judge_amendment(repo, amendment_path, plan_path)
+    _record_judge_amendment(output, amendment_path, amendment)
+    run_root = output / "protocol-pilot" / "run"
+    run_manifest = _read_json(run_root / "manifest.json")
+    if run_manifest.get("status") != "complete":
+        raise SchemaError("Protocol pilot run manifest must already be complete")
+    audit = _audit_extension_with_amendment(run_root, plan, amendment)
+    _write_json(output / "protocol-pilot" / "audit.json", audit)
+    if not audit["passed"]:
+        raise SchemaError("Amended protocol pilot audit failed")
+    manifest = _read_json(output / "manifest.json")
+    manifest["protocol_pilot"] = {
+        "audit": str(output / "protocol-pilot" / "audit.json"),
+        "audit_sha256": _sha256_file(output / "protocol-pilot" / "audit.json"),
+    }
+    manifest["status"] = "protocol_pilot_complete"
+    manifest["use_balance_confirmed_off"] = True
+    _write_json(output / "manifest.json", manifest)
+    return audit
+
+
 def _run(
     repo: Path,
     plan_path: Path,
@@ -236,19 +382,29 @@ def _run(
     block: int,
     workers: int,
     confirm_use_balance_off: bool,
+    amendment_path: Path | None = None,
 ) -> dict[str, Any]:
     if not confirm_use_balance_off:
         raise SchemaError("Paid extension calls require explicit confirmation that Use balance is OFF")
     plan = _load_plan(plan_path)
     validate_plan(repo, plan_path, plan)
     manifest = _require_prepared(output, plan_path)
+    amendment = None
+    recorded_amendment = manifest.get("judge_execution_amendment")
+    if block > 0 and recorded_amendment is not None and amendment_path is None:
+        raise SchemaError("Registered blocks require the recorded Judge execution amendment")
+    if amendment_path is not None:
+        amendment, _ = _load_judge_amendment(repo, amendment_path, plan_path)
+        if workers != 1:
+            raise SchemaError("Paid xAI Judge execution requires workers=1")
+        _record_judge_amendment(output, amendment_path, amendment)
     if block > 0:
         pilot = _read_json(output / "protocol-pilot" / "audit.json")
         if pilot.get("passed") is not True:
             raise SchemaError("A passing protocol pilot is required before registered blocks")
     block_id = f"block-{block:02d}"
     schedule = _read_json(output / "schedule.json")["blocks"][block_id]
-    config = _runtime(repo, plan, schedule)
+    config = _runtime(repo, plan, schedule, amendment_path, amendment)
     config_path = output / "runtime-configs" / f"{block_id}.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
@@ -257,7 +413,7 @@ def _run(
         run_benchmark(config_path, run_root, workers=workers)
     finally:
         if (run_root / "manifest.json").is_file():
-            audit = _audit_extension(run_root, plan)
+            audit = _audit_extension_with_amendment(run_root, plan, amendment)
             audit_path = (
                 output / "protocol-pilot" / "audit.json"
                 if block == 0
@@ -334,6 +490,8 @@ def run_single_judge(
     judge_id: str,
     workers: int,
     confirm_use_balance_off: bool,
+    amendment_path: Path | None = None,
+    probe_one: bool = False,
 ) -> dict[str, Any]:
     """Resume one fixed Judge independently without changing frozen conversations."""
 
@@ -342,6 +500,15 @@ def run_single_judge(
     plan = _load_plan(plan_path)
     validate_plan(repo, plan_path, plan)
     _require_prepared(output, plan_path)
+    amendment = None
+    amended_spec = None
+    if amendment_path is not None:
+        amendment, amended_spec = _load_judge_amendment(repo, amendment_path, plan_path)
+        if judge_id != amended_spec.id:
+            raise SchemaError("The xAI amendment may only be used for the Grok 4.5 Judge")
+        if workers != 1:
+            raise SchemaError("Paid xAI Judge execution requires workers=1")
+        _record_judge_amendment(output, amendment_path, amendment)
     block_id = f"block-{block:02d}"
     config_path = output / "runtime-configs" / f"{block_id}.yaml"
     if not config_path.is_file():
@@ -350,6 +517,8 @@ def run_single_judge(
     judges = {spec.id: spec for spec in _load_model_specs(config, "judges")}
     if judge_id not in judges:
         raise SchemaError(f"Unknown fixed Judge: {judge_id}")
+    if amended_spec is not None:
+        judges[judge_id] = amended_spec
     run_root = output / ("protocol-pilot/run" if block == 0 else f"blocks/{block_id}")
     run_manifest = _read_json(run_root / "manifest.json")
     run_fingerprint = str(run_manifest["run_fingerprint"])
@@ -357,8 +526,18 @@ def run_single_judge(
     conversation_paths = sorted((run_root / "conversations" / TARGET_ID).glob("*.json"))
     if len(conversation_paths) != 6:
         raise SchemaError(f"Expected six frozen conversations for {block_id}")
-    def judge_conversation(conversation_path: Path) -> None:
-        conversation = Conversation.from_dict(_read_json(conversation_path))
+    loaded_conversations = {
+        path: Conversation.from_dict(_read_json(path)) for path in conversation_paths
+    }
+    conversation_paths.sort(key=lambda path: (len(loaded_conversations[path].turns), path.name))
+    before_completed = sum(
+        str(item.get("judge_id")) == judge_id
+        for path in _judgment_artifact_paths(run_root)[0]
+        for item in _read_jsonl(path)
+    )
+
+    def judge_conversation(conversation_path: Path, *, final_turn_only: bool = False) -> None:
+        conversation = loaded_conversations[conversation_path]
         scenario = by_scenario[conversation.scenario_id].scenarios[conversation.scenario_id]
         role = by_scenario[conversation.scenario_id].roles[scenario.role_id]
         judgment_path = (
@@ -375,18 +554,48 @@ def run_single_judge(
             [judges[judge_id]],
             int(config["evaluation"]["judge_max_output_tokens"]),
             run_fingerprint,
+            final_turn_only=final_turn_only,
             audit_rubric=config["evaluation"]["challenge_judge_rubric"],
         )
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(judge_conversation, path) for path in conversation_paths]
-        for future in as_completed(futures):
-            future.result()
+    if probe_one:
+        judge_conversation(conversation_paths[0], final_turn_only=True)
+    elif workers == 1:
+        for path in conversation_paths:
+            judge_conversation(path)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(judge_conversation, path) for path in conversation_paths]
+            for future in as_completed(futures):
+                future.result()
     judgment_paths, _ = _judgment_artifact_paths(run_root)
     completed = sum(
         str(item.get("judge_id")) == judge_id
         for path in judgment_paths
         for item in _read_jsonl(path)
     )
+    calls = [
+        call
+        for path in judgment_paths
+        for item in _read_jsonl(path)
+        if str(item.get("judge_id")) == judge_id
+        for call in item.get("metadata", {}).get("calls", [])
+        if isinstance(call, Mapping)
+    ]
+    actual_costs = [
+        float(call["provider_reported_cost_usd"])
+        for call in calls
+        if call.get("provider_reported_cost_usd") is not None
+    ]
+    estimated_cost = 0.0
+    for call in calls:
+        estimated_cost += (
+            int(call.get("input_tokens", 0))
+            * judges[judge_id].input_price_per_million
+            + int(call.get("output_tokens", 0))
+            * judges[judge_id].output_price_per_million
+        ) / 1_000_000
+    new_completed = completed - before_completed
+    passed = new_completed == 1 if probe_one else completed == 27
     result = {
         "schema_version": "1.0",
         "updated_at": _now(),
@@ -394,10 +603,20 @@ def run_single_judge(
         "judge_id": judge_id,
         "completed": completed,
         "expected": 27,
-        "passed": completed == 27,
+        "new_completed": new_completed,
+        "mode": "single-paid-call-probe" if probe_one else "full-judge-resume",
+        "passed": passed,
         "rubric_version": "challenge-judge-audit-v2.1",
+        "provider": judges[judge_id].provider,
+        "input_tokens": sum(int(call.get("input_tokens", 0)) for call in calls),
+        "output_tokens": sum(int(call.get("output_tokens", 0)) for call in calls),
+        "estimated_list_cost_usd": round(estimated_cost, 6),
+        "provider_reported_cost_usd": (
+            round(sum(actual_costs), 6) if len(actual_costs) == len(calls) and calls else None
+        ),
     }
-    progress_path = output / ("protocol-pilot" if block == 0 else f"blocks/{block_id}") / f"{judge_id}-progress.json"
+    suffix = "probe" if probe_one else "progress"
+    progress_path = output / ("protocol-pilot" if block == 0 else f"blocks/{block_id}") / f"{judge_id}-{suffix}.json"
     _write_json(progress_path, result)
     if not result["passed"]:
         raise SchemaError(f"Judge {judge_id} is incomplete; resume with the same command")
@@ -419,11 +638,15 @@ def _parser() -> argparse.ArgumentParser:
     pilot.add_argument("--output", type=Path, required=True)
     pilot.add_argument("--workers", type=int, default=1)
     pilot.add_argument("--confirm-use-balance-off", action="store_true")
+    close_pilot = sub.add_parser("close-pilot")
+    close_pilot.add_argument("--output", type=Path, required=True)
+    close_pilot.add_argument("--judge-amendment", type=Path, required=True)
     block = sub.add_parser("run-block")
     block.add_argument("--output", type=Path, required=True)
     block.add_argument("--block", type=int, required=True, choices=range(1, 11))
     block.add_argument("--workers", type=int, default=1)
     block.add_argument("--confirm-use-balance-off", action="store_true")
+    block.add_argument("--judge-amendment", type=Path)
     check = sub.add_parser("verify")
     check.add_argument("--output", type=Path, required=True)
     judge = sub.add_parser("run-judge")
@@ -432,6 +655,8 @@ def _parser() -> argparse.ArgumentParser:
     judge.add_argument("--judge", required=True, choices=JUDGE_IDS)
     judge.add_argument("--workers", type=int, default=2)
     judge.add_argument("--confirm-use-balance-off", action="store_true")
+    judge.add_argument("--judge-amendment", type=Path)
+    judge.add_argument("--probe-one", action="store_true")
     return parser
 
 
@@ -447,8 +672,24 @@ def main() -> None:
         result = prepare(repo, plan_path, args.output.resolve(), args.model_snapshot.resolve())
     elif args.command == "run-pilot":
         result = _run(repo, plan_path, args.output.resolve(), 0, args.workers, args.confirm_use_balance_off)
+    elif args.command == "close-pilot":
+        result = close_protocol_pilot(
+            repo,
+            plan_path,
+            args.output.resolve(),
+            args.judge_amendment.resolve(),
+        )
     elif args.command == "run-block":
-        result = _run(repo, plan_path, args.output.resolve(), args.block, args.workers, args.confirm_use_balance_off)
+        amendment_path = None if args.judge_amendment is None else args.judge_amendment.resolve()
+        result = _run(
+            repo,
+            plan_path,
+            args.output.resolve(),
+            args.block,
+            args.workers,
+            args.confirm_use_balance_off,
+            amendment_path,
+        )
     elif args.command == "run-judge":
         result = run_single_judge(
             repo,
@@ -458,6 +699,8 @@ def main() -> None:
             args.judge,
             args.workers,
             args.confirm_use_balance_off,
+            None if args.judge_amendment is None else args.judge_amendment.resolve(),
+            args.probe_one,
         )
     else:
         result = verify(repo, plan_path, args.output.resolve())

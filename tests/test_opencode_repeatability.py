@@ -16,6 +16,7 @@ from japanese_rp_bench.v2.opencode_repeatability_analysis import (
     sample_extension_decision,
 )
 from japanese_rp_bench.v2.opencode_repeatability_extension import (
+    _load_judge_amendment,
     build_schedule as build_extension_schedule,
     validate_plan as validate_extension_plan,
 )
@@ -34,6 +35,9 @@ REPO = Path(__file__).resolve().parents[1]
 PLAN_PATH = REPO / "configs" / "opencode_challenge_repeatability_2026-07-27.json"
 EXTENSION_PLAN_PATH = (
     REPO / "configs" / "opencode_qwen38_repeatability_extension_2026-08-05.json"
+)
+EXTENSION_AMENDMENT_PATH = (
+    REPO / "configs" / "opencode_qwen38_xai_grok_amendment_2026-08-06.json"
 )
 
 
@@ -64,6 +68,18 @@ class OpenCodeChallengeRepeatabilityTests(unittest.TestCase):
         self.assertEqual(result["rubric_version"], "challenge-judge-audit-v2.1")
         self.assertEqual(set(schedule["blocks"]), {f"block-{index:02d}" for index in range(11)})
         self.assertTrue(all(len(jobs) == len(set(jobs)) == 6 for jobs in schedule["blocks"].values()))
+
+    def test_qwen38_xai_amendment_changes_only_grok_execution_route(self) -> None:
+        amendment, spec = _load_judge_amendment(
+            REPO,
+            EXTENSION_AMENDMENT_PATH,
+            EXTENSION_PLAN_PATH,
+        )
+
+        self.assertEqual(amendment["amendment_id"], "qwen38-direct-xai-grok-20260806-v1")
+        self.assertEqual(spec.id, "judge-opencode-grok-4.5")
+        self.assertEqual((spec.provider, spec.model, spec.reasoning), ("xai", "grok-4.5", "low"))
+        self.assertEqual(spec.api_key_env, "XAI_API_KEY")
 
     def test_runner_accepts_only_a_versioned_optional_challenge_rubric(self) -> None:
         self.assertIsNone(_challenge_judge_rubric({"evaluation": {}}))

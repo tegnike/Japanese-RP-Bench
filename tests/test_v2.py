@@ -667,6 +667,56 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(payload["reasoning_effort"], "none")
         self.assertEqual(result.reasoning_config, {"reasoning_effort": "none"})
 
+    def test_xai_responses_api_is_single_attempt_and_reports_exact_cost(self) -> None:
+        spec = ModelSpec(
+            id="judge-opencode-grok-4.5",
+            provider="xai",
+            model="grok-4.5",
+            api_key_env="TEST_XAI_KEY",
+            reasoning="low",
+            input_price_per_million=2.0,
+            output_price_per_million=6.0,
+        )
+        response = {
+            "id": "response-xai-1",
+            "model": "grok-4.5",
+            "status": "completed",
+            "output": [{"content": [{"type": "output_text", "text": "{\"answer\":\"ok\"}"}]}],
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "output_tokens_details": {"reasoning_tokens": 20},
+                "cost_in_usd_ticks": 5_000_000,
+            },
+        }
+        schema = {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+            "additionalProperties": False,
+        }
+        with patch.dict("os.environ", {"TEST_XAI_KEY": "secret"}), patch(
+            "japanese_rp_bench.v2.providers._post_json", return_value=response
+        ) as post:
+            result = generate_text(
+                spec,
+                "system",
+                [{"role": "user", "content": "hi"}],
+                32,
+                json_mode=True,
+                json_schema=schema,
+            )
+
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(post.call_args.args[0], "https://api.x.ai/v1/responses")
+        self.assertEqual(post.call_args.kwargs["attempts"], 1)
+        payload = post.call_args.args[1]
+        self.assertEqual(payload["input"][0], {"role": "system", "content": "system"})
+        self.assertEqual(payload["reasoning"], {"effort": "low"})
+        self.assertEqual(payload["text"]["format"]["type"], "json_schema")
+        self.assertEqual(result.provider, "xai")
+        self.assertEqual(result.provider_reported_cost_usd, 0.0005)
+
     def test_opencode_go_anthropic_endpoint_is_selected(self) -> None:
         spec = ModelSpec(
             id="go-qwen-test",
