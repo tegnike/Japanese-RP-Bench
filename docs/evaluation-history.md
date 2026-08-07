@@ -22,8 +22,8 @@
 
 ## 現在の扱い
 
-現在のREADMEとダッシュボードの主結果は、OpenCode Go 8モデル × Challenge 6シナリオ ×
-各10生成の480会話を、Judge v2.1で再評価した反復評価です。生成分散を含む95%区間、順位確率、
+現在のREADMEとダッシュボードの主結果は、OpenCode Go 9モデル × Challenge 6シナリオ ×
+各10生成の540会話を、Judge v2.1で評価した反復評価です。生成分散を含む95%区間、順位確率、
 Judge感度、多重比較を報告します。
 
 2026-07-24〜25の15モデル評価は、同じ36シナリオと3 Judgeを完了しましたが、各モデル・
@@ -154,6 +154,13 @@ OpenCode Goで利用できる8モデルについて、Challenge 6シナリオを
 - [Challenge反復評価の事前登録](opencode-challenge-repeatability-plan-2026-07-27.md)
 - [Judge v2.1の変更理由と再評価条件](opencode-judge-audit-v21-2026-07-29.md)
 - [Challenge反復評価の確定結果](opencode-challenge-repeatability-results-2026-07-28.md)
+
+### 2026-08-05〜07: Qwen3.8 Maxの10 block追加評価
+
+Qwen3.8 Maxを既存8モデルと同じ6シナリオ×10生成で追加した。60会話、270対象応答、
+810 Judge出力が欠損0で完了し、9モデル540会話として再解析した。Grok 4.5 JudgeはOpenCode Goの
+endpoint障害が継続したため、記録済み修正票に従い公式xAI APIを使用した。他の条件は固定した。
+点順位は8位、RP Summary 87.66、Major-free率63.3%で、全288指標別ペアの優位判定は0件だった。
 
 ## 履歴文書を読む際の注意
 

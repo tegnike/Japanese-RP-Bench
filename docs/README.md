@@ -37,7 +37,7 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 | [`opencode-judge-audit-v2-2026-07-28.md`](opencode-judge-audit-v2-2026-07-28.md) | 保存済み83重大不一致のオフライン監査、修正版Judgeルーブリック、再Judge範囲 |
 | [`opencode-judge-audit-v2-results-2026-07-28.md`](opencode-judge-audit-v2-results-2026-07-28.md) | contrast 24/24と保存済み83重大不一致のv2再Judge結果 |
 | [`opencode-judge-audit-v21-2026-07-29.md`](opencode-judge-audit-v21-2026-07-29.md) | 残存15件の3分類、v2.1の限定修正、54/54 contrast、全体再Judge条件 |
-| [`opencode-challenge-repeatability-results-2026-07-28.md`](opencode-challenge-repeatability-results-2026-07-28.md) | 現在の主結果。480会話、v2.1の6,480 Judge出力、区間、順位確率、全ペア比較 |
+| [`opencode-challenge-repeatability-results-2026-07-28.md`](opencode-challenge-repeatability-results-2026-07-28.md) | 現在の主結果。9モデル540会話、v2.1の7,290 Judge出力、区間、順位確率、全ペア比較 |
 | [`role_packs/README.md`](../role_packs/README.md) | Role Packの構造、各フィールド、作成・検証手順 |
 | [`configs/README.md`](../configs/README.md) | 現行設定、履歴用設定、補助スクリプトの使い分け |
 
@@ -45,7 +45,7 @@ Japanese-RP-Benchには、現行仕様、実行ガイド、日付時点の結果
 
 | 文書 | 状態 |
 |---|---|
-| [`opencode-challenge-repeatability-results-2026-07-28.md`](opencode-challenge-repeatability-results-2026-07-28.md) | **現在の主結果**。8モデル×6シナリオ×10生成、v2.1で6,480 Judge出力完了 |
+| [`opencode-challenge-repeatability-results-2026-07-28.md`](opencode-challenge-repeatability-results-2026-07-28.md) | **現在の主結果**。9モデル×6シナリオ×10生成、v2.1で7,290 Judge出力完了 |
 | [`gpt-5.6-terra-luna-results-2026-07-25.md`](gpt-5.6-terra-luna-results-2026-07-25.md) | 過去の単回15モデル評価を構成した追加結果 |
 | [`claude-fable-5-results-2026-07-25.md`](claude-fable-5-results-2026-07-25.md) | 過去の単回参考値。1件を5回拒否後に除外し、残り35/36を完了 |
 | [`claude-sonnet-5-results-2026-07-25.md`](claude-sonnet-5-results-2026-07-25.md) | 過去の単回追加評価。36/36完了 |

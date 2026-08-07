@@ -34,6 +34,7 @@ test("server-renders the benchmark dashboard", async () => {
   assert.match(html, /Grok 4\.5/);
   assert.match(html, /Hy3/);
   assert.match(html, /Qwen3\.7 Max/);
+  assert.match(html, /Qwen3\.8 Max/);
   assert.match(html, /MiMo V2\.5 Pro/);
   assert.match(html, /Challenge RP Summary/);
   assert.match(html, /Major-free率/);
@@ -45,7 +46,7 @@ test("server-renders the benchmark dashboard", async () => {
   );
 });
 
-test("ships eight repeated-evaluation models with uncertainty metadata", async () => {
+test("ships nine repeated-evaluation models with uncertainty metadata", async () => {
   const data = await readFile(new URL("../app/data.ts", import.meta.url), "utf8");
   const dashboard = await readFile(
     new URL("../app/dashboard.tsx", import.meta.url),
@@ -56,16 +57,16 @@ test("ships eight repeated-evaluation models with uncertainty metadata", async (
     "utf8",
   );
 
-  assert.match(data, /modelCount:\s*8/);
+  assert.match(data, /modelCount:\s*9/);
   assert.match(data, /scenariosPerModel:\s*6/);
   assert.match(data, /generationsPerScenario:\s*10/);
   assert.match(data, /conversationsPerModel:\s*60/);
   assert.match(data, /judgeCount:\s*3/);
-  assert.match(data, /judgeOutputs:\s*6480/);
-  assert.equal((data.match(/\n\s+rank:\s+\d+,/g) ?? []).length, 8);
-  assert.equal((data.match(/\n\s+summary:\s+[\d.]+,/g) ?? []).length, 8);
-  assert.equal((data.match(/\n\s+summaryCi95:\s*\[\d/g) ?? []).length, 8);
-  assert.equal((data.match(/\n\s+firstPlaceProbability:\s+[\d.]+,/g) ?? []).length, 8);
+  assert.match(data, /judgeOutputs:\s*7290/);
+  assert.equal((data.match(/\n\s+rank:\s+\d+,/g) ?? []).length, 9);
+  assert.equal((data.match(/\n\s+summary:\s+[\d.]+,/g) ?? []).length, 9);
+  assert.equal((data.match(/\n\s+summaryCi95:\s*\[\d/g) ?? []).length, 9);
+  assert.equal((data.match(/\n\s+firstPlaceProbability:\s+[\d.]+,/g) ?? []).length, 9);
   assert.match(dashboard, /metricKeys\.map/);
   assert.match(
     dashboard,

@@ -353,7 +353,7 @@ export function Dashboard() {
             <p className="chart-note">
               左端は「{metricMeta[metric].short}」の順位です。グラフはスコアの高い順に並び、
               各モデル名の下にMajor-free率、Major率、RP Summaryを順に使った総合順位を表示します。
-              8モデル28ペア×8指標の比較では、Holm補正後に優位と判定できた組み合わせは0件です。
+              9モデル36ペア×8指標の比較では、Holm補正後に優位と判定できた組み合わせは0件です。
             </p>
           </section>
 

@@ -55,6 +55,7 @@ DISPLAY_NAMES = {
     "opencode-go-minimax-m3": "MiniMax M3",
     "opencode-go-glm-5.2": "GLM-5.2",
     "opencode-go-mimo-v2.5-pro": "MiMo V2.5 Pro",
+    "opencode-go-qwen3.8-max": "Qwen3.8 Max",
 }
 
 
@@ -240,7 +241,11 @@ def _load_records(
         run_fingerprint = str(run_manifest["run_fingerprint"])
         report_paths = sorted((run_root / "reports").glob("**/*.json"))
         judgment_paths, _ = _judgment_artifact_paths(run_root)
-        if len(report_paths) != 48 or len(judgment_paths) != 48:
+        expected_conversations_per_block = len(TARGET_IDS) * len(SCENARIO_IDS)
+        if (
+            len(report_paths) != expected_conversations_per_block
+            or len(judgment_paths) != expected_conversations_per_block
+        ):
             raise SchemaError(f"Analysis source block has an unexpected artifact count: {block_id}")
 
         for report_path in report_paths:
@@ -329,12 +334,13 @@ def _load_records(
 
     cells = Counter((record["target_id"], record["scenario_id"]) for record in records)
     if (
-        len(records) != 480
+        len(records) != len(TARGET_IDS) * len(SCENARIO_IDS) * 10
         or set(cells) != set(itertools.product(TARGET_IDS, SCENARIO_IDS))
         or set(cells.values()) != {10}
-        or final_judgment_count != 6480
+        or final_judgment_count
+        != len(TARGET_IDS) * 10 * 27 * len(JUDGE_IDS)
     ):
-        raise SchemaError("Analysis records do not form the complete preregistered 8x6x10 design")
+        raise SchemaError("Analysis records do not form the complete preregistered target x 6 x 10 design")
     pair_summary = []
     for (left, right), raw in sorted(judge_pairs.items()):
         opportunities = int(raw["opportunities"])
